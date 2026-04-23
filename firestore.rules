@@ -1,0 +1,447 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // -------------------------------------------------------------------------
+    // Global Static Deny
+    // -------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Reusable Helpers
+    // -------------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incomingData() {
+      return request.resource.data;
+    }
+
+    function existingData() {
+      return resource.data;
+    }
+
+    function ideaPath(ideaId) {
+      return /databases/$(database)/documents/ideas/$(ideaId);
+    }
+
+    function ideaDoc(ideaId) {
+      return get(ideaPath(ideaId));
+    }
+
+    function ideaExists(ideaId) {
+      return exists(ideaPath(ideaId));
+    }
+
+    function isIdeaReadable(ideaId) {
+      return ideaExists(ideaId) && (
+        !('visibility' in ideaDoc(ideaId).data) ||
+        ideaDoc(ideaId).data.visibility == 'public' ||
+        isOwner(ideaDoc(ideaId).data.authorId) ||
+        (isSignedIn() && ('supportedBy' in ideaDoc(ideaId).data) && (request.auth.uid in ideaDoc(ideaId).data.supportedBy))
+      );
+    }
+
+    function isValidVisibility(v) {
+      return v in ['public', 'unlisted', 'private'];
+    }
+
+    function isValidIdeaType(v) {
+      return v in ['seed', 'sprout'];
+    }
+
+    function isValidIdeaStage(v) {
+      return v in ['seed', 'sprout', 'growing', 'testing', 'launching', 'released', 'archived'];
+    }
+
+    function isValidReleaseStatus(v) {
+      return v in ['none', 'planned', 'beta', 'released', 'paused'];
+    }
+
+    function isValidProjectStage(v) {
+      return !(v is string) || v in ['idea', 'prototype', 'beta', 'in_dev'];
+    }
+
+    function isOptionalString(field, maxLen) {
+      return !(field in incomingData()) ||
+        incomingData()[field] == null ||
+        (incomingData()[field] is string && incomingData()[field].size() <= maxLen);
+    }
+
+    function isOptionalTimestamp(field) {
+      return !(field in incomingData()) ||
+        incomingData()[field] == null ||
+        incomingData()[field] is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // User Profiles
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if true; // Public profiles are fine in this community-focused app
+
+      allow create: if isOwner(userId) &&
+        incomingData().keys().hasAll(['name', 'role', 'plan', 'createdAt']) &&
+        incomingData().role == 'user' &&
+        incomingData().plan == 'free' &&
+        incomingData().name is string &&
+        incomingData().name.size() <= 60 &&
+        incomingData().createdAt is timestamp;
+
+      allow update: if isOwner(userId) &&
+        incomingData().diff(existingData()).affectedKeys().hasOnly([
+          'name',
+          'avatarUrl',
+          'bio',
+          'socialLinks',
+          'aiTicketBalance',
+          'updatedAt'
+        ]) &&
+        (!('name' in incomingData()) || (incomingData().name is string && incomingData().name.size() <= 60)) &&
+        (!('avatarUrl' in incomingData()) || (incomingData().avatarUrl is string && incomingData().avatarUrl.size() <= 1000)) &&
+        (!('bio' in incomingData()) || (incomingData().bio is string && incomingData().bio.size() <= 1000)) &&
+        (!('plan' in incomingData()) || incomingData().plan in ['free', 'supporter', 'pro']) &&
+        (!('aiTicketBalance' in incomingData()) || incomingData().aiTicketBalance is number);
+    }
+
+    // -------------------------------------------------------------------------
+    // Salon / Greenhouse
+    // -------------------------------------------------------------------------
+    function getUserPlan(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.plan;
+    }
+
+    function isSupporterPlus() {
+      return isSignedIn() && getUserPlan(request.auth.uid) in ['supporter', 'pro'];
+    }
+
+    function isProMember() {
+      return isSignedIn() && getUserPlan(request.auth.uid) == 'pro';
+    }
+
+    match /salonPosts/{postId} {
+      allow read: if isSupporterPlus();
+      
+      allow create: if isProMember() &&
+        incomingData().authorId == request.auth.uid &&
+        incomingData().authorPlan == 'pro' &&
+        incomingData().boostState == 'none' &&
+        incomingData().cheerCount == 0 &&
+        incomingData().commentCount == 0 &&
+        incomingData().createdAt is timestamp;
+
+      allow update: if (isOwner(existingData().authorId) && 
+        incomingData().authorId == existingData().authorId &&
+        incomingData().createdAt == existingData().createdAt &&
+        incomingData().diff(existingData()).affectedKeys().hasOnly(['boostState', 'updatedAt', 'title', 'body', 'screenshotUrl']) &&
+        (!('boostState' in incomingData()) || incomingData().boostState in ['none', 'applied'])
+      ) || (
+        isSignedIn() &&
+        incomingData().diff(existingData()).affectedKeys().hasOnly(['cheerCount', 'commentCount'])
+      );
+
+      allow delete: if isOwner(existingData().authorId);
+    }
+
+    match /salonComments/{commentId} {
+      allow read: if isSupporterPlus();
+      allow create: if isSupporterPlus() &&
+        incomingData().authorId == request.auth.uid &&
+        incomingData().createdAt is timestamp;
+      allow delete: if isOwner(existingData().authorId);
+    }
+
+    match /salonReactions/{reactionId} {
+      // reactionId = {postId}_{userId}
+      allow read: if isSupporterPlus();
+      allow create, delete: if isSupporterPlus() &&
+        reactionId == incomingData().postId + '_' + request.auth.uid &&
+        incomingData().userId == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // Commerce
+    // -------------------------------------------------------------------------
+    match /purchases/{purchaseId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isEmailVerified() && isValidId(purchaseId) && incomingData().userId == request.auth.uid;
+      allow update: if isOwner(resource.data.userId) && 
+        incomingData().diff(existingData()).affectedKeys().hasOnly(['status', 'updatedAt']);
+    }
+
+    // -------------------------------------------------------------------------
+    // AI Reports
+    // -------------------------------------------------------------------------
+    match /aiReports/{reportId} {
+      allow get: if isOwner(resource.data.userId) || isIdeaReadable(resource.data.postId);
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isIdeaReadable(resource.data.postId));
+      allow create: if isEmailVerified() 
+        && incomingData().userId == request.auth.uid
+        && isIdeaReadable(incomingData().postId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Ideas
+    // -------------------------------------------------------------------------
+    function isValidIdea(data) {
+      return isValidIdeaType(data.type) &&
+        isValidIdeaStage(data.stage) &&
+        isValidVisibility(data.visibility) &&
+        data.title is string &&
+        data.title.size() > 0 &&
+        data.title.size() <= 100 &&
+        data.oneLineSummary is string &&
+        data.oneLineSummary.size() > 0 &&
+        data.oneLineSummary.size() <= 200 &&
+        data.authorId == request.auth.uid &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 5000)) &&
+        (!('statusNote' in data) || (data.statusNote is string && data.statusNote.size() <= 280)) &&
+        (!('projectStage' in data) || isValidProjectStage(data.projectStage)) &&
+        (!('demoUrl' in data) || (data.demoUrl is string && data.demoUrl.size() <= 2000)) &&
+        (!('repoUrl' in data) || (data.repoUrl is string && data.repoUrl.size() <= 2000));
+    }
+
+    match /ideas/{ideaId} {
+      allow get, list: if !('visibility' in resource.data) 
+        || resource.data.visibility == 'public' 
+        || isOwner(resource.data.authorId)
+        || (isSignedIn() && ('supportedBy' in resource.data) && (request.auth.uid in resource.data.supportedBy));
+
+      allow create: if isEmailVerified() &&
+        isValidId(ideaId) &&
+        isValidIdea(incomingData()) &&
+        incomingData().keys().hasAll([
+          'type',
+          'stage',
+          'title',
+          'oneLineSummary',
+          'authorId',
+          'createdAt',
+          'updatedAt',
+          'supportCount',
+          'commentCount',
+          'builderReactionCount',
+          'releaseStatus',
+          'visibility'
+        ]) &&
+        incomingData().supportCount == 0 &&
+        incomingData().commentCount == 0 &&
+        incomingData().builderReactionCount == 0 &&
+        incomingData().releaseStatus == 'none' &&
+        (!('releasedAt' in incomingData()) || incomingData().releasedAt == null) &&
+        (!('latestReleaseId' in incomingData()) || incomingData().latestReleaseId == null) &&
+        (!('rootIdeaId' in incomingData()) || incomingData().rootIdeaId == null || incomingData().rootIdeaId is string) &&
+        (!('parentIdeaId' in incomingData()) || incomingData().parentIdeaId == null || incomingData().parentIdeaId is string);
+
+      allow update: if (isOwner(existingData().authorId) &&
+        isValidIdea(incomingData()) &&
+        // immutable fields
+        incomingData().authorId == existingData().authorId &&
+        incomingData().createdAt == existingData().createdAt &&
+        incomingData().supportCount == existingData().supportCount &&
+        incomingData().commentCount == existingData().commentCount &&
+        incomingData().builderReactionCount == existingData().builderReactionCount &&
+        incomingData().latestReleaseId == existingData().latestReleaseId &&
+        incomingData().releasedAt == existingData().releasedAt &&
+        incomingData().rootIdeaId == existingData().rootIdeaId &&
+        // only allow intended client-editable fields
+        incomingData().diff(existingData()).affectedKeys().hasOnly([
+          'stage',
+          'title',
+          'oneLineSummary',
+          'description',
+          'statusNote',
+          'projectStage',
+          'demoUrl',
+          'repoUrl',
+          'tags',
+          'visibility',
+          'updatedAt',
+          'releaseStatus',
+          'parentIdeaId',
+          'struggles',
+          'whatItDoes',
+          'targetUsers',
+          'currentStatus',
+          'lookingFor',
+          'testerCall',
+          'screenshots',
+          'updatedAt'
+        ])) || (
+          // Allow anyone to increment testerCount
+          isSignedIn() &&
+          incomingData().diff(existingData()).affectedKeys().hasOnly(['testerCount', 'updatedAt']) &&
+          incomingData().testerCount == existingData().testerCount + 1 &&
+          incomingData().updatedAt is timestamp
+        ) || (
+          // Allow anyone to support/unsupport if they are logged in
+          isSignedIn() &&
+          incomingData().diff(existingData()).affectedKeys().hasOnly(['supportCount', 'supportedBy']) &&
+          incomingData().supportCount is number &&
+          (incomingData().supportCount == existingData().supportCount + 1 || incomingData().supportCount == existingData().supportCount - 1) &&
+          incomingData().supportedBy is list
+        ) || (
+          // Allow anyone to increment commentCount
+          isSignedIn() &&
+          incomingData().diff(existingData()).affectedKeys().hasOnly(['commentCount']) &&
+          incomingData().commentCount == existingData().commentCount + 1
+        );
+
+      allow delete: if isOwner(resource.data.authorId);
+
+      // -------------------------------------------------------------------------
+      // Comments (Nested)
+      // -------------------------------------------------------------------------
+      match /comments/{commentId} {
+        allow read: if isIdeaReadable(ideaId);
+
+        allow create: if isEmailVerified() &&
+          isValidId(commentId) &&
+          ideaExists(ideaId) &&
+          ideaDoc(ideaId).data.visibility == 'public' &&
+          incomingData().ideaId == ideaId &&
+          incomingData().authorId == request.auth.uid &&
+          incomingData().text is string &&
+          incomingData().text.size() > 0 &&
+          incomingData().text.size() <= 1000 &&
+          incomingData().createdAt is timestamp &&
+          (!('updatedAt' in incomingData()) || incomingData().updatedAt == null || incomingData().updatedAt is timestamp) &&
+          (!('kind' in incomingData()) || incomingData().kind in ['comment', 'suggestion', 'question', 'support']) &&
+          (!('adoptedInRelease' in incomingData()) || incomingData().adoptedInRelease == false) &&
+          (!('adoptedInMilestone' in incomingData()) || incomingData().adoptedInMilestone == false);
+
+        allow update: if isOwner(existingData().authorId) &&
+          incomingData().ideaId == existingData().ideaId &&
+          incomingData().authorId == existingData().authorId &&
+          incomingData().createdAt == existingData().createdAt &&
+          incomingData().diff(existingData()).affectedKeys().hasOnly([
+            'text',
+            'updatedAt'
+          ]) &&
+          incomingData().text is string &&
+          incomingData().text.size() > 0 &&
+          incomingData().text.size() <= 1000 &&
+          (!('updatedAt' in incomingData()) || incomingData().updatedAt is timestamp);
+
+        allow delete: if isOwner(resource.data.authorId);
+      }
+
+      // -------------------------------------------------------------------------
+      // Growth Events (Nested)
+      // -------------------------------------------------------------------------
+      match /growthEvents/{eventId} {
+        allow read: if isIdeaReadable(ideaId);
+
+        allow create: if isOwner(ideaDoc(ideaId).data.authorId) &&
+          isValidId(eventId) &&
+          incomingData().ideaId == ideaId &&
+          incomingData().type in [
+            'created_seed',
+            'created_sprout',
+            'commented',
+            'adopted',
+            'started_building',
+            'opened_test',
+            'beta_released',
+            'released',
+            'milestone',
+            'status_changed'
+          ] &&
+          incomingData().title is string &&
+          incomingData().title.size() > 0 &&
+          incomingData().title.size() <= 120 &&
+          (!('body' in incomingData()) || (incomingData().body is string && incomingData().body.size() <= 2000)) &&
+          incomingData().createdAt is timestamp;
+
+        allow update: if isOwner(ideaDoc(ideaId).data.authorId) &&
+          incomingData().ideaId == existingData().ideaId &&
+          incomingData().createdAt == existingData().createdAt;
+
+        allow delete: if isOwner(ideaDoc(ideaId).data.authorId);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Releases
+    // -------------------------------------------------------------------------
+    match /releases/{releaseId} {
+      allow read, list: if resource.data.visibility == 'public' 
+        || isOwner(resource.data.authorId)
+        || (('ideaId' in resource.data) && isIdeaReadable(resource.data.ideaId));
+
+      allow create: if isEmailVerified() &&
+        isValidId(releaseId) &&
+        incomingData().ideaId is string &&
+        ideaExists(incomingData().ideaId) &&
+        isOwner(ideaDoc(incomingData().ideaId).data.authorId) &&
+        incomingData().authorId == request.auth.uid &&
+        incomingData().status in ['planned', 'beta', 'released', 'paused'] &&
+        isValidVisibility(incomingData().visibility) &&
+        incomingData().createdAt is timestamp &&
+        incomingData().updatedAt is timestamp &&
+        (!('releasedAt' in incomingData()) || incomingData().releasedAt == null || incomingData().releasedAt is timestamp) &&
+        (!('title' in incomingData()) || (incomingData().title is string && incomingData().title.size() <= 120)) &&
+        (!('subtitle' in incomingData()) || (incomingData().subtitle is string && incomingData().subtitle.size() <= 280)) &&
+        (!('message' in incomingData()) || (incomingData().message is string && incomingData().message.size() <= 2000)) &&
+        incomingData().channels is list &&
+        incomingData().channels.size() > 0 &&
+        incomingData().channels.size() <= 5;
+
+      allow update: if isOwner(existingData().authorId) &&
+        ideaExists(existingData().ideaId) &&
+        isOwner(ideaDoc(existingData().ideaId).data.authorId) &&
+        incomingData().authorId == existingData().authorId &&
+        incomingData().ideaId == existingData().ideaId &&
+        incomingData().createdAt == existingData().createdAt &&
+        incomingData().status in ['planned', 'beta', 'released', 'paused'] &&
+        isValidVisibility(incomingData().visibility) &&
+        incomingData().updatedAt is timestamp &&
+        (!('releasedAt' in incomingData()) || incomingData().releasedAt == null || incomingData().releasedAt is timestamp) &&
+        (!('title' in incomingData()) || (incomingData().title is string && incomingData().title.size() <= 120)) &&
+        (!('subtitle' in incomingData()) || (incomingData().subtitle is string && incomingData().subtitle.size() <= 280)) &&
+        (!('message' in incomingData()) || (incomingData().message is string && incomingData().message.size() <= 2000)) &&
+        incomingData().channels is list &&
+        incomingData().channels.size() > 0 &&
+        incomingData().channels.size() <= 5;
+
+      allow delete: if isOwner(existingData().authorId) &&
+        ideaExists(existingData().ideaId) &&
+        isOwner(ideaDoc(existingData().ideaId).data.authorId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Notifications
+    // -------------------------------------------------------------------------
+    match /notifications/{notificationId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isSignedIn(); // Allow people to notify others
+      allow update: if isOwner(resource.data.userId) &&
+        incomingData().diff(existingData()).affectedKeys().hasOnly(['read']);
+      allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /shippedApps/{appId} {
+      allow read: if true;
+      allow create: if isEmailVerified() && isValidId(appId) && incomingData().developerId == request.auth.uid;
+      allow update, delete: if isOwner(existingData().developerId);
+    }
+  }
+}

@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isSignedIn() { return request.auth != null; }
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'displayName', 'createdAt'])
+        && data.userId == request.auth.uid
+        && data.displayName is string && data.displayName.size() <= 100
+        && data.createdAt == request.time
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2048))
+        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000))
+        && (!('skills' in data) || (data.skills is list && data.skills.size() <= 20 && (data.skills.size() == 0 || data.skills[0] is string)));
+    }
+    
+    function isValidIdeaCreate(data) {
+      return data.keys().hasAll(['title', 'problemDetails', 'authorId', 'stage', 'createdAt', 'updatedAt'])
+        && data.authorId == request.auth.uid
+        && data.title is string && data.title.size() <= 200
+        && data.problemDetails is string && data.problemDetails.size() <= 5000
+        && data.stage is string && data.stage.matches('^(brainstorming|wireframing|building|launched)$')
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && (!('targetUsers' in data) || (data.targetUsers is string && data.targetUsers.size() <= 1000))
+        && (!('alternatives' in data) || (data.alternatives is string && data.alternatives.size() <= 1000))
+        && (!('frustrations' in data) || (data.frustrations is string && data.frustrations.size() <= 1000))
+        && (!('minFeatures' in data) || (data.minFeatures is string && data.minFeatures.size() <= 1000))
+        && (!('tags' in data) || (data.tags is list && data.tags.size() <= 10 && (data.tags.size() == 0 || data.tags[0] is string)))
+        && (!('commentCount' in data) || (data.commentCount is number))
+        && (!('reactionCount' in data) || (data.reactionCount is number));
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming());
+      allow update: if isSignedIn() && isValidId(userId) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'skills'])
+      );
+    }
+    
+    match /ideas/{ideaId} {
+      allow get: if true;
+      allow list: if true; 
+      allow create: if isSignedIn() && isValidId(ideaId) && isValidIdeaCreate(incoming());
+      allow update: if isSignedIn() && isValidId(ideaId) && (
+        (existing().authorId == request.auth.uid && incoming().authorId == existing().authorId && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'problemDetails', 'targetUsers', 'alternatives', 'frustrations', 'minFeatures', 'stage', 'tags', 'updatedAt'])) ||
+        (incoming().authorId == existing().authorId && incoming().createdAt == existing().createdAt && incoming().updatedAt == existing().updatedAt && incoming().diff(existing()).affectedKeys().hasOnly(['reactionCount', 'commentCount']))
+      );
+    }
+  }
+}

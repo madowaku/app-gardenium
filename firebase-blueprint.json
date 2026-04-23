@@ -1,0 +1,321 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information with subscription plan details.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "bio": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "plan": { "type": "string", "enum": ["free", "supporter", "pro"] },
+        "planStatus": { "type": "string", "enum": ["active", "inactive", "past_due", "canceled", "trialing", "unpaid"] },
+        "planStartedAt": { "type": "number" },
+        "currentPeriodEnd": { "type": "number" },
+        "cancelAtPeriodEnd": { "type": "boolean" },
+        "stripeCustomerId": { "type": "string" },
+        "stripeSubscriptionId": { "type": "string" },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "monthKey": { "type": "string" },
+            "aiSummariesUsed": { "type": "number" },
+            "reportsUsed": { "type": "number" }
+          }
+        },
+        "socialLinks": { 
+          "type": "object",
+          "properties": {
+             "twitter": { "type": "string" },
+             "github": { "type": "string" },
+             "website": { "type": "string" },
+             "x": { "type": "string" }
+          }
+        },
+        "seedCount": { "type": "number" },
+        "sproutCount": { "type": "number" },
+        "releasedCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "role", "plan", "createdAt"]
+    },
+    "SalonPost": {
+      "title": "SalonPost",
+      "description": "A post in the members-only Salon/Greenhouse space.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPlan": { "type": "string", "enum": ["supporter", "pro"] },
+        "type": { "type": "string", "enum": ["progress", "question"] },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "screenshotUrl": { "type": "string" },
+        "boostState": { "type": "string", "enum": ["none", "applied", "candidate", "featured"] },
+        "cheerCount": { "type": "number" },
+        "commentCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorId", "authorName", "type", "title", "body", "createdAt"]
+    },
+    "SalonComment": {
+      "title": "SalonComment",
+      "description": "A comment on a SalonPost.",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPlan": { "type": "string", "enum": ["supporter", "pro"] },
+        "body": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "authorId", "body", "createdAt"]
+    },
+    "SalonReaction": {
+      "title": "SalonReaction",
+      "description": "A reaction (like/cheer) on a SalonPost.",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["cheer"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "userId", "type", "createdAt"]
+    },
+    "Idea": {
+      "title": "Idea",
+      "description": "Shared entry for Seeds and Saplings (Sprouts).",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["seed", "sprout"] },
+        "stage": { "type": "string", "enum": ["seed", "sprout", "growing", "testing", "launching", "released", "archived"] },
+        "title": { "type": "string" },
+        "oneLineSummary": { "type": "string" },
+        "problemDetails": { "type": "string" },
+        "targetUsers": { "type": "string" },
+        "alternatives": { "type": "string" },
+        "frustrations": { "type": "string" },
+        "minFeatures": { "type": "string" },
+        "whatItDoes": { "type": "string" },
+        "currentStatus": { "type": "string" },
+        "lookingFor": { "type": "array", "items": { "type": "string" } },
+        "struggles": { "type": "string" },
+        "demoUrl": { "type": "string" },
+        "repoUrl": { "type": "string" },
+        "screenshots": { "type": "array", "items": { "type": "string" } },
+        "parentIdeaId": { "type": "string" },
+        "rootIdeaId": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "authorId": { "type": "string" },
+        "supportCount": { "type": "number" },
+        "commentCount": { "type": "number" },
+        "builderReactionCount": { "type": "number" },
+        "releaseStatus": { "type": "string", "enum": ["none", "planned", "beta", "released"] },
+        "latestReleaseId": { "type": "string" },
+        "releasedAt": { "type": "string", "format": "date-time" },
+        "visibility": { "type": "string", "enum": ["public", "unlisted", "private"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "stage", "title", "authorId", "createdAt", "updatedAt"]
+    },
+    "Release": {
+      "title": "Release",
+      "description": "App release information across various platforms.",
+      "type": "object",
+      "properties": {
+        "ideaId": { "type": "string" },
+        "rootIdeaId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "status": { "type": "string", "enum": ["planned", "beta", "released", "paused"] },
+        "versionLabel": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "releasedAt": { "type": "string", "format": "date-time" },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["app_store", "google_play", "web", "testflight", "apk", "other"] },
+              "url": { "type": "string" },
+              "label": { "type": "string" }
+            }
+          }
+        },
+        "message": { "type": "string" },
+        "changelog": { "type": "string" },
+        "screenshots": { "type": "array", "items": { "type": "string" } },
+        "iconUrl": { "type": "string" },
+        "contributorSummary": {
+          "type": "object",
+          "properties": {
+            "commentCount": { "type": "number" },
+            "testerCount": { "type": "number" },
+            "collaboratorCount": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ideaId", "authorId", "status", "createdAt"]
+    },
+    "GrowthEvent": {
+      "title": "GrowthEvent",
+      "description": "Logged event in the lifecycle of an idea.",
+      "type": "object",
+      "properties": {
+        "ideaId": { "type": "string" },
+        "rootIdeaId": { "type": "string" },
+        "type": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actorName": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "fromStage": { "type": "string" },
+        "toStage": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ideaId", "type", "title", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "User discussion on an idea.",
+      "type": "object",
+      "properties": {
+        "ideaId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "text": { "type": "string" },
+        "kind": { "type": "string", "enum": ["comment", "suggestion", "question", "support"] },
+        "adoptedInRelease": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ideaId", "authorId", "text", "createdAt"]
+    },
+    "ShippedApp": {
+      "title": "ShippedApp",
+      "description": "Information about a built and released app.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "appUrl": { "type": "string" },
+        "developerId": { "type": "string" },
+        "ideaId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "description", "appUrl", "developerId", "createdAt"]
+    },
+    "Purchase": {
+      "title": "Purchase",
+      "description": "Records of a customer transaction.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "productId": { "type": "string" },
+        "productType": { "type": "string", "enum": ["ai_report", "ai_ticket"] },
+        "status": { "type": "string", "enum": ["pending", "paid", "fulfilled", "failed"] },
+        "price": { "type": "number" },
+        "currency": { "type": "string" },
+        "targetPostId": { "type": "string" },
+        "ticketAmount": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["userId", "productId", "status", "price", "createdAt"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "System or user-driven notifications.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["like", "comment", "tester_apply", "ai_report", "system"] },
+        "message": { "type": "string" },
+        "link": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["userId", "type", "message", "read", "createdAt"]
+    },
+    "AiReport": {
+      "title": "AiReport",
+      "description": "AI-generated analysis of feedback for a specific idea.",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "userId": { "type": "string" },
+        "summary": { "type": "string" },
+        "commonRequests": { "type": "array", "items": { "type": "string" } },
+        "concerns": { "type": "array", "items": { "type": "string" } },
+        "nextActions": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["postId", "userId", "summary", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles (now includes aiTicketBalance)."
+    },
+    "/ideas/{ideaId}": {
+      "schema": { "$ref": "#/entities/Idea" },
+      "description": "Core idea documents."
+    },
+    "/ideas/{ideaId}/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Comments nested in ideas."
+    },
+    "/ideas/{ideaId}/growthEvents/{eventId}": {
+      "schema": { "$ref": "#/entities/GrowthEvent" },
+      "description": "Growth logs for an idea."
+    },
+    "/releases/{releaseId}": {
+      "schema": { "$ref": "#/entities/Release" },
+      "description": "Product release records."
+    },
+    "/shippedApps/{appId}": {
+      "schema": { "$ref": "#/entities/ShippedApp" },
+      "description": "Records of apps built and released."
+    },
+    "/purchases/{purchaseId}": {
+      "schema": { "$ref": "#/entities/Purchase" },
+      "description": "User transactions."
+    },
+    "/aiReports/{reportId}": {
+      "schema": { "$ref": "#/entities/AiReport" },
+      "description": "Stored AI analysis reports."
+    },
+    "/salonPosts/{postId}": {
+      "schema": { "$ref": "#/entities/SalonPost" },
+      "description": "Members only greenhouse posts."
+    },
+    "/salonPosts/{postId}/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/SalonComment" },
+      "description": "Comments on salon posts."
+    },
+    "/salonPosts/{postId}/reactions/{reactionId}": {
+      "schema": { "$ref": "#/entities/SalonReaction" },
+      "description": "Reactions on salon posts."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AppNotification" },
+      "description": "User notifications."
+    },
+    "/salonComments/{commentId}": {
+      "schema": { "$ref": "#/entities/SalonComment" },
+      "description": "Comments on salon posts (root level)."
+    },
+    "/stripe_events/{eventId}": {
+      "schema": { "type": "object" },
+      "description": "Processed Stripe event IDs for idempotency."
+    }
+  }
+}
