@@ -16,16 +16,48 @@ service firebase.storage {
         && request.resource.size < 10 * 1024 * 1024;
     }
 
+    function assetDoc(assetId) {
+      return firestore.get(
+        /databases/(default)/documents/assets/$(assetId)
+      );
+    }
+
+    function assetExists(assetId) {
+      return assetDoc(assetId) != null
+        && assetDoc(assetId).data != null;
+    }
+
+    function isSharedAsset(assetId) {
+      return assetExists(assetId)
+        && ('visibility' in assetDoc(assetId).data)
+        && assetDoc(assetId).data.visibility == 'shared';
+    }
+
+    // ----------------------------------------------------------------------
+    // Avatars
+    // Path example: avatars/{uid}/avatar.jpg
+    // Public read is OK for profile display
+    // ----------------------------------------------------------------------
     match /avatars/{uid}/{fileName} {
       allow read: if true;
       allow write: if isOwner(uid) && isImageUpload();
     }
 
+    // ----------------------------------------------------------------------
+    // Assets
+    // Path example: assets/{uid}/{assetId}/original
+    // Owner can always read/write.
+    // Other users can read only when the corresponding Firestore asset doc
+    // is marked visibility == 'shared'
+    // ----------------------------------------------------------------------
     match /assets/{uid}/{assetId}/{fileName} {
-      allow read: if isOwner(uid);
+      allow read: if isOwner(uid) || isSharedAsset(assetId);
       allow write: if isOwner(uid) && isImageUpload();
     }
 
+    // ----------------------------------------------------------------------
+    // Default deny
+    // ----------------------------------------------------------------------
     match /{allPaths=**} {
       allow read, write: if false;
     }
