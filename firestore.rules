@@ -377,6 +377,36 @@ service cloud.firestore {
 
         allow delete: if isOwner(ideaDoc(ideaId).data.authorId);
       }
+
+      // -------------------------------------------------------------------------
+      // Testers (Nested)
+      // -------------------------------------------------------------------------
+      match /testers/{testerId} {
+        allow read: if isOwner(ideaDoc(ideaId).data.authorId) || isOwner(resource.data.userId);
+
+        allow create: if isEmailVerified() &&
+          isValidId(testerId) &&
+          ideaExists(ideaId) &&
+          isIdeaReadable(ideaId) &&
+          ideaDoc(ideaId).data.stage == 'testing' &&
+          ('testerCall' in ideaDoc(ideaId).data) &&
+          request.auth.uid != ideaDoc(ideaId).data.authorId &&
+          incomingData().keys().hasOnly([
+            'userId',
+            'userName',
+            'email',
+            'appliedAt',
+            'status'
+          ]) &&
+          incomingData().userId == request.auth.uid &&
+          incomingData().userName is string &&
+          incomingData().userName.size() > 0 &&
+          incomingData().userName.size() <= 120 &&
+          incomingData().email is string &&
+          incomingData().email.size() <= 320 &&
+          incomingData().appliedAt is timestamp &&
+          incomingData().status == 'pending';
+      }
     }
 
     // -------------------------------------------------------------------------
