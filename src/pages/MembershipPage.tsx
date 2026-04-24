@@ -27,6 +27,7 @@ import { APP_PLANS } from '../lib/billing/plans';
 import { getMembershipUiState } from '../lib/billing/planStatus';
 import TopUpMenu from '../components/commerce/TopUpMenu';
 import { PageType } from '../App';
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 
 interface MembershipPageProps {
   navigate: (page: PageType, id?: string) => void;
@@ -44,12 +45,12 @@ const MembershipPage: React.FC<MembershipPageProps> = ({ navigate }) => {
   // Fetch detailed membership and top-up status
   React.useEffect(() => {
     const fetchStatus = async () => {
-      if (!currentUser) return;
+      if (!currentUser) {
+        setIsStatusLoading(false);
+        return;
+      }
       try {
-        const token = await currentUser.getIdToken();
-        const response = await fetch('/api/user/membership-status', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const response = await authenticatedFetch('/api/user/membership-status');
         if (response.ok) {
           setMembershipStatus(await response.json());
         }

@@ -199,6 +199,7 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
     try {
       const commentsRef = collection(db, 'ideas', ideaId, 'comments');
       const commentDoc = {
+        ideaId,
         text: newComment.trim(),
         authorId: currentUser.uid,
         authorName: currentUser.displayName || 'Anonymous',
@@ -340,17 +341,18 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
     try {
       const ai = getAIService();
       const targetLang = language === 'ja' ? 'Japanese' : 'English';
+      const escapeForJson = (value?: string) => (value || '').replace(/"/g, '\\"');
       
       const prompt = `Translate the following text fields to ${targetLang}. Preserve the JSON structure exactly. Do not translate the tags array elements unless necessary, but translate the rest.
       JSON:
       {
-        "title": "${idea.title.replace(/"/g, '\\"')}",
-        "oneLineSummary": "${idea.oneLineSummary.replace(/"/g, '\\"')}",
-        "problemDetails": "${idea.problemDetails.replace(/"/g, '\\"')}",
-        "targetUsers": "${idea.targetUsers.replace(/"/g, '\\"')}",
-        "alternatives": "${idea.alternatives.replace(/"/g, '\\"')}",
-        "frustrations": "${idea.frustrations.replace(/"/g, '\\"')}",
-        "minFeatures": "${idea.minFeatures.replace(/"/g, '\\"')}"
+        "title": "${escapeForJson(idea.title)}",
+        "oneLineSummary": "${escapeForJson(idea.oneLineSummary)}",
+        "problemDetails": "${escapeForJson(idea.problemDetails)}",
+        "targetUsers": "${escapeForJson(idea.targetUsers)}",
+        "alternatives": "${escapeForJson(idea.alternatives)}",
+        "frustrations": "${escapeForJson(idea.frustrations)}",
+        "minFeatures": "${escapeForJson(idea.minFeatures)}"
       }`;
 
       const response = await ai.models.generateContent({
@@ -530,7 +532,7 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
               <ExternalLink size={18} />
               {t('idea.tryPrototype')}
             </a>
-          ) : idea.stage === 'Testing' ? (
+          ) : idea.stage === 'testing' ? (
              <button 
                 onClick={() => navigate('testerCall', idea.id)}
                 className="flex items-center gap-2 px-8 py-3.5 bg-indigo-600 text-white rounded-full font-medium hover:bg-indigo-700 transition-colors shadow-sm"
@@ -913,7 +915,7 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
                  {t('idea.aiAnalysisTitle')}
                </h3>
                <p className="text-text-dark text-sm leading-relaxed relative z-10 mb-6">
-                 This idea focuses on solving <strong>{idea.targetUsers.split(',')[0]}</strong> pain points by offering <strong>{idea.minFeatures.split('.')[0]}</strong>. The primary differentiator is moving away from generic solutions to a specialized, automated approach.
+                 This idea focuses on solving <strong>{(idea.targetUsers || '').split(',')[0] || t('common.anonymous')}</strong> pain points by offering <strong>{(idea.minFeatures || '').split('.')[0] || idea.oneLineSummary}</strong>. The primary differentiator is moving away from generic solutions to a specialized, automated approach.
                </p>
                
                <button 
@@ -975,7 +977,7 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
             <div className="bg-bg-main rounded-[24px] p-8 border border-border-color shadow-sm">
               <h3 className="text-xs uppercase tracking-widest text-text-muted font-bold mb-4">{t('submit.tagsLabel')}</h3>
               <div className="flex flex-wrap gap-2">
-                {idea.tags.map(tag => (
+                {(idea.tags || []).map(tag => (
                   <span key={tag} className="bg-white border border-border-color text-text-muted text-xs px-4 py-1.5 rounded-full font-medium shadow-sm hover:border-gray-300 transition-colors cursor-pointer">
                     {tag}
                   </span>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Smartphone, ShieldCheck, Mail, Calendar, ExternalLink, TestTube2, Loader2, Users, Check } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { doc, getDoc, collection, addDoc, getDocs, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, getDocs, updateDoc, increment, serverTimestamp, query, where } from 'firebase/firestore';
 import { PopulatedIdea } from '../types/appSproutTypes';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -34,15 +34,25 @@ export default function TesterCall({ navigate, ideaId }: TesterCallProps) {
           setIdea({ id: docSnap.id, ...ideaData } as any);
 
           if (currentUser) {
-            const testersSnap = await getDocs(collection(db, 'ideas', ideaId, 'testers'));
-            const testersData = testersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-            
             if (currentUser.uid === ideaData.authorId) {
+              const testersSnap = await getDocs(collection(db, 'ideas', ideaId, 'testers'));
+              const testersData = testersSnap.docs.map(d => {
+                const data = d.data();
+                return {
+                  id: d.id,
+                  ...data,
+                  appliedAt: data.appliedAt?.toMillis ? data.appliedAt.toMillis() : data.appliedAt,
+                } as any;
+              });
               setTesters(testersData);
-            }
-            
-            if (testersData.some(t => t.userId === currentUser.uid)) {
-              setHasApplied(true);
+              setHasApplied(testersData.some(t => t.userId === currentUser.uid));
+            } else {
+              const myApplicationQ = query(
+                collection(db, 'ideas', ideaId, 'testers'),
+                where('userId', '==', currentUser.uid)
+              );
+              const myApplicationSnap = await getDocs(myApplicationQ);
+              setHasApplied(!myApplicationSnap.empty);
             }
           }
         }
@@ -246,7 +256,7 @@ export default function TesterCall({ navigate, ideaId }: TesterCallProps) {
                           <Mail size={14} /> {t.email || "No email provided"}
                         </a>
                       </td>
-                      <td className="p-4 text-text-muted text-sm">{new Date(t.appliedAt).toLocaleDateString()}</td>
+                      <td className="p-4 text-text-muted text-sm">{t.appliedAt ? new Date(t.appliedAt).toLocaleDateString() : '-'}</td>
                       <td className="p-4">
                         <span className="px-3 py-1 bg-amber-50 text-amber-600 border border-amber-200 rounded-full text-xs font-bold capitalize">
                           {t.status}

@@ -1,4 +1,4 @@
-import { auth } from '../lib/firebase';
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 
 export const billingService = {
   /**
@@ -7,12 +7,10 @@ export const billingService = {
   async createCheckoutSession(params: {
     productKey: 'supporter' | 'pro' | 'boost_support' | 'extra_activity_report' | 'extra_tester_recruitment';
   }): Promise<{ url: string }> {
-    const token = await auth.currentUser?.getIdToken();
-    const response = await fetch('/api/billing/create-checkout-session', {
+    const response = await authenticatedFetch('/api/billing/create-checkout-session', {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(params),
     });
@@ -29,12 +27,10 @@ export const billingService = {
    * Creates a Stripe Customer Portal session.
    */
   async createPortalSession(): Promise<{ url: string }> {
-    const token = await auth.currentUser?.getIdToken();
-    const response = await fetch('/api/billing/create-portal-session', {
+    const response = await authenticatedFetch('/api/billing/create-portal-session', {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
       }
     });
 

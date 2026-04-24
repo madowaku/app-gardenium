@@ -55,7 +55,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } as AppUser);
           }
         } catch (error) {
-          console.error("Error fetching/creating user profile:", error);
+          const isOfflineError = (error as any)?.message?.includes('client is offline');
+          if (!isOfflineError) {
+            console.warn("Error fetching/creating user profile:", error);
+          }
+          setAppUser({
+            id: user.uid,
+            name: user.displayName || 'Sprout User',
+            avatarUrl: user.photoURL || '',
+            bio: '',
+            role: 'user',
+            plan: 'free',
+            createdAt: Date.now(),
+          } as AppUser);
         }
       } else {
         setAppUser(null);

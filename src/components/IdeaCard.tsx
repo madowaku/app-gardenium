@@ -35,6 +35,8 @@ const getStageConfig = (stage: IdeaStage) => {
 export default function IdeaCard({ idea, navigate }: IdeaCardProps) {
   const { t, language } = useLanguage();
   const stageConfig = getStageConfig(idea.stage);
+  const tags = idea.tags || [];
+  const createdAt = typeof idea.createdAt === 'number' ? idea.createdAt : Date.now();
 
   const formatRelativeTime = (timestamp: number) => {
     const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -85,7 +87,7 @@ export default function IdeaCard({ idea, navigate }: IdeaCardProps) {
               </div>
             )}
           </div>
-          <div className="text-xs text-text-muted font-medium font-serif italic">{formatRelativeTime(idea.createdAt)}</div>
+          <div className="text-xs text-text-muted font-medium font-serif italic">{formatRelativeTime(createdAt)}</div>
         </div>
         
         {idea.type === 'sprout' && idea.screenshots && idea.screenshots.length > 0 && (
@@ -112,7 +114,7 @@ export default function IdeaCard({ idea, navigate }: IdeaCardProps) {
       </div>
       
       <div className="flex flex-wrap gap-2 mb-6">
-        {idea.tags.map(tag => (
+        {tags.map(tag => (
           <span key={tag} className="bg-bg-main border border-border-color text-text-muted text-[11px] uppercase tracking-wider px-3 py-1 rounded-full font-medium">
             {tag}
           </span>

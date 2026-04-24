@@ -11,6 +11,7 @@ import { collection, query, where, getDocs, doc, updateDoc, addDoc, getDoc, serv
 import { PopulatedIdea, ShippedApp } from '../types/appSproutTypes';
 import { updateProfile, signOut } from 'firebase/auth';
 import { billingService } from '../services/billingService';
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 
 interface ProfileProps {
   navigate: (page: string, id?: string) => void;
@@ -211,10 +212,7 @@ export default function Profile({ navigate }: ProfileProps) {
       try {
         // Fetch Membership Status
         try {
-          const token = await currentUser.getIdToken();
-          const statusRes = await fetch('/api/user/membership-status', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
+          const statusRes = await authenticatedFetch('/api/user/membership-status');
           if (statusRes.ok) {
             setMembershipStatus(await statusRes.json());
           }

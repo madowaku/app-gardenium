@@ -55,7 +55,7 @@ export default function NewTesterCall({ navigate }: NewTesterCallProps) {
     try {
       const ideaRef = doc(db, 'ideas', formData.ideaId);
       await updateDoc(ideaRef, {
-        stage: 'Testing',
+        stage: 'testing',
         testerCall: {
           prototypeStage: formData.prototypeStage,
           idealTester: formData.idealTester,

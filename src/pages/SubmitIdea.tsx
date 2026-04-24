@@ -1,11 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { ArrowLeft, CheckCircle2, Sparkles, Loader2, Bot, ChevronRight, Leaf, Sprout, Check, LayoutGrid, X } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { getAIModelForTask, getAIService } from '../lib/ai/modelRouting';
-import { Type } from "@google/genai";
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 import { compressImage } from '../lib/imageService';
 
 interface SubmitIdeaProps {
@@ -23,6 +22,36 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Redirect to login if not authenticated
+  if (!currentUser) {
+    return (
+      <div className="max-w-2xl mx-auto py-16 text-center">
+        <div className="w-20 h-20 mx-auto bg-primary-light text-primary rounded-full flex items-center justify-center mb-8 shadow-sm">
+          <Sprout className="w-10 h-10" />
+        </div>
+        <h1 className="text-3xl font-serif font-medium text-text-dark mb-4">
+          {language === 'ja' ? 'ログインが必要です' : 'Login Required'}
+        </h1>
+        <p className="text-lg text-text-muted mb-10 leading-relaxed">
+          {language === 'ja'
+            ? 'アイデアを投稿するにはログインしてください。'
+            : 'Please sign in to post your idea.'}
+        </p>
+        <button
+          onClick={() => navigate('login')}
+          className="px-10 py-4 bg-primary text-white rounded-full font-bold hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20"
+        >
+          {t('nav.login')}
+        </button>
+      </div>
+    );
+  }
+  const isRetryableSubmitError = (code: unknown) => {
+    if (typeof code !== 'string') return false;
+    const retryable = ['unavailable', 'deadline-exceeded', 'failed-precondition'];
+    return retryable.some(err => code === err || code.endsWith(`/${err}`));
+  };
 
   const [formData, setFormData] = useState({
     title: '',
@@ -101,38 +130,25 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
     setError('');
 
     try {
-      const ai = getAIService();
-      const prompt = `Based on the following seed of an app idea, suggest improvements. Expand on missing details gracefully.
-      Title: ${formData.title}
-      One Line Summary: ${formData.oneLineSummary}
-      Target Users: ${formData.targetUsers}
-      Problem Details: ${formData.problemDetails}
-      Frustrations: ${formData.frustrations}
-      Alternatives: ${formData.alternatives}
-      Minimum Features: ${formData.minFeatures}`;
-
-      const response = await ai.models.generateContent({
-        model: getAIModelForTask('idea_polish'),
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              enhancedTitle: { type: Type.STRING, description: "A catchy, short name for the app" },
-              enhancedOneLineSummary: { type: Type.STRING, description: "A clear, compelling one-line elevator pitch" },
-              enhancedProblemDetails: { type: Type.STRING },
-              enhancedAlternatives: { type: Type.STRING },
-              enhancedFrustrations: { type: Type.STRING },
-              enhancedMinFeatures: { type: Type.STRING },
-              enhancedTags: { type: Type.STRING, description: "Comma-separated list of relevant tags" }
-            },
-            required: ["enhancedTitle", "enhancedOneLineSummary", "enhancedProblemDetails", "enhancedAlternatives", "enhancedFrustrations", "enhancedMinFeatures", "enhancedTags"]
-          }
-        }
+      const response = await authenticatedFetch('/api/ai/enhance-idea', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formData.title,
+          oneLineSummary: formData.oneLineSummary,
+          targetUsers: formData.targetUsers,
+          problemDetails: formData.problemDetails,
+          frustrations: formData.frustrations,
+          alternatives: formData.alternatives,
+          minFeatures: formData.minFeatures,
+        }),
       });
 
-      const result = JSON.parse(response.text.trim());
+      if (!response.ok) {
+        throw new Error('AI enhancement request failed');
+      }
+
+      const result = await response.json();
       setFormData(prev => ({
         ...prev,
         title: result.enhancedTitle || prev.title,
@@ -143,7 +159,7 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
         minFeatures: result.enhancedMinFeatures || prev.minFeatures,
         tags: result.enhancedTags || prev.tags
       }));
-      setShowDetails(true); // Open details if AI populated them
+      setShowDetails(true);
     } catch (err) {
       console.error('Enhance AI failed:', err);
       setError('Failed to enhance your idea with AI. Please try again.');
@@ -156,6 +172,33 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
     e.preventDefault();
     if (!currentUser) {
       setError('You must be logged in to post an idea.');
+      return;
+    }
+
+    await currentUser.reload();
+    if (!currentUser.emailVerified) {
+      setError(language === 'ja'
+        ? '投稿にはメール認証が必要です。Googleログインを利用するか、認証済みアカウントで再ログインしてください。'
+        : 'Email verification is required to post. Please sign in with a verified account.'
+      );
+      return;
+    }
+
+    if (formData.title.length > 100) {
+      setError(language === 'ja' ? 'タイトルは100文字以内で入力してください。' : 'Title must be 100 characters or fewer.');
+      return;
+    }
+
+    if (formData.oneLineSummary.length > 200) {
+      setError(language === 'ja' ? '一言サマリーは200文字以内で入力してください。' : 'One-line summary must be 200 characters or fewer.');
+      return;
+    }
+
+    if (!navigator.onLine) {
+      setError(language === 'ja'
+        ? '現在オフラインです。ネットワーク接続を確認してから再投稿してください。'
+        : 'You appear to be offline. Please reconnect and try submitting again.'
+      );
       return;
     }
     
@@ -174,8 +217,8 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
         type: formData.isSapling ? 'sprout' : 'seed',
         stage: formData.isSapling ? 'sprout' : 'seed',
         authorId: currentUser.uid,
-        supportCount: 1,
-        supportedBy: [currentUser.uid], // Support your own idea by default
+        supportCount: 0,
+        supportedBy: [],
         commentCount: 0,
         builderReactionCount: 0,
         releaseStatus: 'none',
@@ -199,13 +242,94 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
         docData.tags = tagsArray;
       }
 
-      await addDoc(collection(db, 'ideas'), docData);
+      const ideaRef = doc(collection(db, 'ideas'));
+
+      const setDocWithTimeout = async () => {
+        const timeoutMs = 15000;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        try {
+          return await Promise.race([
+            setDoc(ideaRef, docData),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => {
+                const timeoutError = new Error('Idea submission timed out');
+                (timeoutError as any).code = 'deadline-exceeded';
+                reject(timeoutError);
+              }, timeoutMs);
+            }),
+          ]);
+        } finally {
+          if (timer) {
+            clearTimeout(timer);
+          }
+        }
+      };
+
+      const submitViaServerFallback = async () => {
+        const token = await currentUser.getIdToken(true);
+        const { createdAt, updatedAt, ...payload } = docData;
+        const controller = new AbortController();
+        const fallbackTimer = setTimeout(() => controller.abort(), 10000);
+        let response: Response;
+        try {
+          response = await fetch('/api/ideas', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              ideaId: ideaRef.id,
+              payload,
+            }),
+            signal: controller.signal,
+          });
+        } catch (fallbackErr: any) {
+          if (fallbackErr?.name === 'AbortError') {
+            const timeoutError = new Error('Idea submission fallback timed out');
+            (timeoutError as any).code = 'deadline-exceeded';
+            throw timeoutError;
+          }
+          throw fallbackErr;
+        } finally {
+          clearTimeout(fallbackTimer);
+        }
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          const httpError = new Error(body?.error || 'Fallback submission failed');
+          (httpError as any).code = `http-${response.status}`;
+          throw httpError;
+        }
+      };
+
+      try {
+        await setDocWithTimeout();
+      } catch (writeErr: any) {
+        if (isRetryableSubmitError(writeErr?.code)) {
+          await submitViaServerFallback();
+        } else {
+          throw writeErr;
+        }
+      }
 
       setIsSubmitted(true);
       window.scrollTo(0, 0);
     } catch (err: any) {
       console.error('Error submitting idea:', err);
-      setError('Failed to submit idea. Please try again.');
+      if (err?.code === 'permission-denied') {
+        setError(language === 'ja'
+          ? '投稿権限エラーです。ログイン状態・メール認証・入力文字数（タイトル100文字/サマリー200文字）を確認してください。'
+          : 'Permission denied. Check sign-in status, email verification, and title/summary length limits.'
+        );
+      } else if (isRetryableSubmitError(err?.code)) {
+        setError(language === 'ja'
+          ? '投稿処理がタイムアウトしました。接続状態を確認し、少し待ってから再試行してください。'
+          : 'Submission timed out. Please check your connection and try again.'
+        );
+      } else {
+        setError('Failed to submit idea. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -344,6 +468,7 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
             <label className="block text-text-dark font-semibold text-lg">{formData.isSapling ? t('submit.sapling.nameLabel') : t('submit.nameLabel')}</label>
             <input 
               required
+              maxLength={100}
               name="title"
               value={formData.title}
               onChange={handleChange}
@@ -357,6 +482,7 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
             <label className="block text-text-dark font-semibold text-lg">{formData.isSapling ? t('submit.sapling.summaryLabel') : t('submit.summaryLabel')}</label>
             <input 
               required
+              maxLength={200}
               name="oneLineSummary"
               value={formData.oneLineSummary}
               onChange={handleChange}

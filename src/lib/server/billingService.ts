@@ -10,6 +10,164 @@ const stripe = stripeSecretKey
     })
   : null;
 
+function getNow() {
+  return Date.now();
+}
+
+function mapStripeStatus(status: Stripe.Subscription.Status): PlanStatus {
+  switch (status) {
+    case "active":
+      return "active";
+    case "trialing":
+      return "trialing";
+    case "past_due":
+      return "past_due";
+    case "unpaid":
+      return "unpaid";
+    case "canceled":
+      return "canceled";
+    default:
+      return "inactive";
+  }
+}
+
+function getPlanFromPriceId(priceId?: string | null): UserPlan | null {
+  if (!priceId) {
+    return null;
+  }
+
+  if (priceId === process.env.STRIPE_SUPPORTER_PRICE_ID) {
+    return "supporter";
+  }
+
+  if (priceId === process.env.STRIPE_PRO_PRICE_ID) {
+    return "pro";
+  }
+
+  return null;
+}
+
+async function findUidByCustomerId(customerId?: string | null): Promise<string | null> {
+  if (!customerId) {
+    return null;
+  }
+
+  const snapshot = await adminDb
+    .collection("users")
+    .where("stripeCustomerId", "==", customerId)
+    .limit(1)
+    .get();
+
+  return snapshot.empty ? null : snapshot.docs[0].id;
+}
+
+async function handlePaymentCompleted(session: Stripe.Checkout.Session) {
+  const uid = session.metadata?.uid;
+  const productKey = session.metadata?.productKey as ProductKey | undefined;
+
+  if (!uid || !productKey) {
+    return;
+  }
+
+  const userRef = adminDb.collection("users").doc(uid);
+  const userSnap = await userRef.get();
+  const currentTopUps = userSnap.data()?.topUps || {};
+
+  if (productKey === "boost_support") {
+    await userRef.set(
+      {
+        topUps: {
+          ...currentTopUps,
+          boostSupportCount: (currentTopUps.boostSupportCount || 0) + 1,
+          boostSupportLastPurchasedAt: getNow(),
+        },
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  if (productKey === "extra_activity_report") {
+    await userRef.set(
+      {
+        topUps: {
+          ...currentTopUps,
+          extraActivityReportsRemaining: (currentTopUps.extraActivityReportsRemaining || 0) + 1,
+        },
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  if (productKey === "extra_tester_recruitment") {
+    await userRef.set(
+      {
+        topUps: {
+          ...currentTopUps,
+          extraTesterRecruitmentsRemaining: (currentTopUps.extraTesterRecruitmentsRemaining || 0) + 1,
+        },
+      },
+      { merge: true }
+    );
+  }
+}
+
+async function syncSubscription(subscription: Stripe.Subscription) {
+  const customerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer?.id;
+  const uid =
+    subscription.metadata?.uid || (await findUidByCustomerId(customerId));
+
+  if (!uid) {
+    return;
+  }
+
+  const plan = getPlanFromPriceId(subscription.items.data[0]?.price?.id) || "free";
+  const planStatus = mapStripeStatus(subscription.status);
+
+  await adminDb.collection("users").doc(uid).set(
+    {
+      stripeCustomerId: customerId || undefined,
+      stripeSubscriptionId: subscription.id,
+      plan,
+      planStatus,
+      planStartedAt: subscription.start_date ? subscription.start_date * 1000 : getNow(),
+      currentPeriodEnd: subscription.items.data[0]?.current_period_end
+        ? subscription.items.data[0].current_period_end * 1000
+        : null,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    },
+    { merge: true }
+  );
+}
+
+async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
+  const customerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer?.id;
+  const uid =
+    subscription.metadata?.uid || (await findUidByCustomerId(customerId));
+
+  if (!uid) {
+    return;
+  }
+
+  await adminDb.collection("users").doc(uid).set(
+    {
+      plan: "free",
+      planStatus: "inactive",
+      stripeSubscriptionId: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+    },
+    { merge: true }
+  );
+}
+
 function requireStripe() {
   if (!stripe) {
     throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY in .env.local");

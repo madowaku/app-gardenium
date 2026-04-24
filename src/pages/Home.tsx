@@ -36,6 +36,9 @@ export default function Home({ navigate }: HomeProps) {
             ...data,
             type: data.type || (data.isSapling ? 'sprout' : 'seed'),
             stage: (data.stage || 'seed').toLowerCase(),
+            tags: data.tags || [],
+            supportCount: data.supportCount || 0,
+            commentCount: data.commentCount || 0,
             createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : data.createdAt,
             updatedAt: data.updatedAt?.toMillis ? data.updatedAt.toMillis() : data.updatedAt,
             author: { id: data.authorId, name: t('common.sproutThinker'), role: 'user', createdAt: 0 }

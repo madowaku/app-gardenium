@@ -9,7 +9,9 @@ import path from "path";
 import cors from "cors";
 import bodyParser from "body-parser";
 import Stripe from "stripe";
+import { FieldValue } from "firebase-admin/firestore";
 import { authenticate, AuthenticatedRequest } from "./src/lib/server/auth";
+import { adminDb } from "./src/lib/server/admin";
 import {
   createCheckoutSession,
   createPortalSession,
@@ -229,6 +231,88 @@ async function startServer() {
         return res.json({ summary, remaining });
       } catch (error: any) {
         return res.status(500).json({ error: error.message });
+      }
+    }
+  );
+
+  // 6. AI Idea Enhancement
+  app.post(
+    "/api/ai/enhance-idea",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { title, oneLineSummary, targetUsers, problemDetails, frustrations, alternatives, minFeatures } = req.body;
+        const genAI = getAIService();
+
+        const prompt = `Based on the following seed of an app idea, suggest improvements. Expand on missing details gracefully.
+        Title: ${title || ''}
+        One Line Summary: ${oneLineSummary || ''}
+        Target Users: ${targetUsers || ''}
+        Problem Details: ${problemDetails || ''}
+        Frustrations: ${frustrations || ''}
+        Alternatives: ${alternatives || ''}
+        Minimum Features: ${minFeatures || ''}`;
+
+        const result = await genAI.models.generateContent({
+          model: getAIModelForTask("idea_polish"),
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT" as any,
+              properties: {
+                enhancedTitle: { type: "STRING" as any },
+                enhancedOneLineSummary: { type: "STRING" as any },
+                enhancedProblemDetails: { type: "STRING" as any },
+                enhancedAlternatives: { type: "STRING" as any },
+                enhancedFrustrations: { type: "STRING" as any },
+                enhancedMinFeatures: { type: "STRING" as any },
+                enhancedTags: { type: "STRING" as any },
+              },
+              required: ["enhancedTitle", "enhancedOneLineSummary", "enhancedProblemDetails", "enhancedAlternatives", "enhancedFrustrations", "enhancedMinFeatures", "enhancedTags"],
+            },
+          },
+        });
+
+        const enhanced = JSON.parse(result.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
+        return res.json(enhanced);
+      } catch (error: any) {
+        console.error("AI enhance error:", error);
+        return res.status(500).json({ error: error.message || "Failed to enhance idea" });
+      }
+    }
+  );
+
+  // 7. Idea Submission Fallback
+  app.post(
+    "/api/ideas",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { ideaId, payload } = req.body || {};
+        if (!ideaId || typeof ideaId !== "string") {
+          return res.status(400).json({ error: "Invalid ideaId" });
+        }
+        if (!payload || typeof payload !== "object") {
+          return res.status(400).json({ error: "Invalid payload" });
+        }
+
+        const safeDoc = {
+          ...payload,
+          authorId: req.uid,
+          supportCount: Number(payload.supportCount ?? 0),
+          commentCount: Number(payload.commentCount ?? 0),
+          builderReactionCount: Number(payload.builderReactionCount ?? 0),
+          releaseStatus: payload.releaseStatus || "none",
+          visibility: payload.visibility || "public",
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+
+        await adminDb.collection("ideas").doc(ideaId).set(safeDoc, { merge: false });
+        return res.json({ success: true, id: ideaId });
+      } catch (error: any) {
+        return res.status(500).json({ error: error.message || "Failed to create idea" });
       }
     }
   );
