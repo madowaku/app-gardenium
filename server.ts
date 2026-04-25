@@ -11,7 +11,7 @@ import bodyParser from "body-parser";
 import Stripe from "stripe";
 import { FieldValue } from "firebase-admin/firestore";
 import { authenticate, AuthenticatedRequest } from "./src/lib/server/auth";
-import { adminDb } from "./src/lib/server/admin";
+import { adminDb, loadFirebaseConfig } from "./src/lib/server/admin";
 import {
   createCheckoutSession,
   createPortalSession,
@@ -283,6 +283,104 @@ async function startServer() {
     }
   );
 
+  app.post(
+    "/api/ai/translate",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { targetLang, textData } = req.body;
+        const ai = getAIService();
+        
+        const prompt = `Translate the following text fields to ${targetLang}. Preserve the JSON structure exactly. Do not translate the tags array elements unless necessary, but translate the rest.
+        JSON:
+        ${JSON.stringify(textData, null, 2)}`;
+
+        const response = await ai.models.generateContent({
+          model: getAIModelForTask('translate_content'),
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+          }
+        });
+
+        const translatedData = JSON.parse(response.text.trim());
+        return res.json(translatedData);
+      } catch (error: any) {
+        console.error("Translation error:", error);
+        return res.status(500).json({ error: error.message || "Failed to translate content" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/ai/moderate-avatar",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { imageDescription } = req.body;
+        if (!imageDescription) {
+          return res.json({ safe: true }); // Default to safe if no desc
+        }
+        
+        const ai = getAIService();
+        const response = await ai.models.generateContent({
+          model: getAIModelForTask('moderate_profile_image'),
+          contents: `Analyze this image description and determine if it violates safety guidelines (NSFW, hate speech, illegal acts, extreme violence, etc). Return JSON { "safe": boolean, "reason": "string" }\n\nDescription: ${imageDescription}`,
+          config: {
+            responseMimeType: "application/json",
+          }
+        });
+
+        const result = JSON.parse(response.text.trim());
+        return res.json(result);
+      } catch (error: any) {
+        console.error("Avatar moderation error:", error);
+        // Fail open if AI fails, to not block users
+        return res.json({ safe: true, reason: "moderation_failed" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/ai/analyze-report",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { isPremium, activityData } = req.body;
+        const task = isPremium ? 'analysis_report_premium' : 'analysis_report';
+        
+        const ai = getAIService();
+        const prompt = `Act as an expert Product Manager. Analyze the following app community activity data and generate a structured JSON report.
+        
+        Data: ${JSON.stringify(activityData)}
+        
+        ${isPremium ? 'Provide a deep, strategic analysis with specific actionable advice, potential feature pivots, and a growth strategy.' : 'Provide a brief summary of the activity, highlighting 1-2 positive trends and 1 area for improvement.'}
+        
+        Return the result as JSON matching this schema:
+        {
+          "summary": "string",
+          "commonRequests": ["string"],
+          "concerns": ["string"],
+          "nextActions": ["string"]
+        }`;
+
+        const response = await ai.models.generateContent({
+          model: getAIModelForTask(task),
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json",
+          }
+        });
+
+        const result = JSON.parse(response.text.trim());
+        return res.json(result);
+      } catch (error: any) {
+        console.error("AI report analysis error:", error);
+        return res.status(500).json({ error: error.message || "Failed to generate report" });
+      }
+    }
+  );
+
   // 7. Idea Submission Fallback
   app.post(
     "/api/ideas",
@@ -334,6 +432,21 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    
+    // Log safe config
+    try {
+      const config = loadFirebaseConfig();
+      console.log("Firebase Config:", {
+        projectId: config.projectId,
+        authDomain: config.authDomain,
+        databaseId: config.firestoreDatabaseId && config.firestoreDatabaseId !== "(default)" 
+          ? config.firestoreDatabaseId 
+          : "(default)",
+      });
+    } catch (e) {
+      console.log("Firebase Config: Not available or invalid format.");
+    }
+
     console.log(
       stripe
         ? "Stripe initialized"

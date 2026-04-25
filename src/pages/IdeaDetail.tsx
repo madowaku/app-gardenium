@@ -6,13 +6,12 @@ import { db } from '../lib/firebase';
 import { doc, getDoc, collection, query, orderBy, getDocs, addDoc, serverTimestamp, updateDoc, increment, arrayUnion, arrayRemove, where, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { Type } from "@google/genai";
-import { getAIModelForTask, getAIService } from '../lib/ai/modelRouting';
 import { ProductDefinition, AiReport } from '../types/commerce';
 import { PRODUCTS } from '../lib/commerce/products';
 import { createPurchase, processMockPayment, fulfillPurchase } from '../lib/commerce/purchaseService';
 import PurchaseConfirmModal from '../components/commerce/PurchaseConfirmModal';
 import { AiReportCard } from '../components/commerce/AiReportCard';
+import { authenticatedFetch } from '../lib/authenticatedFetch';
 
 interface Comment {
   id: string;
@@ -339,44 +338,32 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
     if (!idea || isTranslating) return;
     setIsTranslating(true);
     try {
-      const ai = getAIService();
       const targetLang = language === 'ja' ? 'Japanese' : 'English';
-      const escapeForJson = (value?: string) => (value || '').replace(/"/g, '\\"');
       
-      const prompt = `Translate the following text fields to ${targetLang}. Preserve the JSON structure exactly. Do not translate the tags array elements unless necessary, but translate the rest.
-      JSON:
-      {
-        "title": "${escapeForJson(idea.title)}",
-        "oneLineSummary": "${escapeForJson(idea.oneLineSummary)}",
-        "problemDetails": "${escapeForJson(idea.problemDetails)}",
-        "targetUsers": "${escapeForJson(idea.targetUsers)}",
-        "alternatives": "${escapeForJson(idea.alternatives)}",
-        "frustrations": "${escapeForJson(idea.frustrations)}",
-        "minFeatures": "${escapeForJson(idea.minFeatures)}"
-      }`;
-
-      const response = await ai.models.generateContent({
-        model: getAIModelForTask('translate_content'),
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              oneLineSummary: { type: Type.STRING },
-              problemDetails: { type: Type.STRING },
-              targetUsers: { type: Type.STRING },
-              alternatives: { type: Type.STRING },
-              frustrations: { type: Type.STRING },
-              minFeatures: { type: Type.STRING },
-            },
-            required: ["title", "oneLineSummary", "problemDetails", "targetUsers", "alternatives", "frustrations", "minFeatures"]
+      const response = await authenticatedFetch('/api/ai/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          targetLang,
+          textData: {
+            title: idea.title,
+            oneLineSummary: idea.oneLineSummary,
+            problemDetails: idea.problemDetails,
+            targetUsers: idea.targetUsers,
+            alternatives: idea.alternatives,
+            frustrations: idea.frustrations,
+            minFeatures: idea.minFeatures
           }
-        }
+        })
       });
 
-      const translatedData = JSON.parse(response.text.trim());
+      if (!response.ok) {
+        throw new Error('Translation failed');
+      }
+
+      const translatedData = await response.json();
       setTranslatedIdea(translatedData);
     } catch (err) {
       console.error('Translation failed:', err);

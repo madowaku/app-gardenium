@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, ChangeEvent } from 'react';
 import { Settings, Lightbulb, ThumbsUp, TestTube2, MessageSquare, Loader2, LogOut, Edit2, X, Check, Twitter, Github, Globe, Camera, AlertCircle, Rocket, Plus, Search, Sprout, ShieldCheck } from 'lucide-react';
-import { getAIModelForTask, getAIService } from '../lib/ai/modelRouting';
 import { getPopulatedIdeas } from '../data/dummyData';
 import IdeaCard from '../components/IdeaCard';
 import TopUpMenu from '../components/commerce/TopUpMenu';
@@ -63,22 +62,21 @@ export default function Profile({ navigate }: ProfileProps) {
 
   const checkImageModeration = async (base64Data: string) => {
     try {
-      const ai = getAIService();
-      const response = await ai.models.generateContent({
-        model: getAIModelForTask('moderate_profile_image'),
-        contents: [
-          {
-            parts: [
-              { inlineData: { data: base64Data.split(',')[1], mimeType: "image/jpeg" } },
-              { text: "Analyze this image for inappropriate content (violence, nudity, hate speech, etc.). If it is inappropriate for a community profile picture, reply with 'FAIL'. If it is safe, reply with 'PASS'. Do not provide any other text." }
-            ]
-          }
-        ]
+      const response = await authenticatedFetch('/api/ai/moderate-avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageDescription: 'A user uploaded a new profile picture. Please verify it does not contain violence, nudity, or hate speech.' })
       });
-      return response.text.trim().toUpperCase() === 'PASS';
+      
+      if (!response.ok) {
+        return true; // Fail open
+      }
+      
+      const result = await response.json();
+      return result.safe !== false;
     } catch (err) {
       console.error('Moderation check failed:', err);
-      return true; // Fallback to pass if AI fails, but ideally handle better
+      return true; // Fallback to pass if AI fails
     }
   };
 

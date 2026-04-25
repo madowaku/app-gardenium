@@ -317,6 +317,11 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
       window.scrollTo(0, 0);
     } catch (err: any) {
       console.error('Error submitting idea:', err);
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (isDev && err?.message) {
+        setError(`Dev Error: ${err.message} (${err.code || 'no-code'})`);
+        return;
+      }
       if (err?.code === 'permission-denied') {
         setError(language === 'ja'
           ? '投稿権限エラーです。ログイン状態・メール認証・入力文字数（タイトル100文字/サマリー200文字）を確認してください。'

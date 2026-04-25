@@ -28,6 +28,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser(user);
       
       if (user) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.log("[AuthContext] User Login detected:", {
+            uid: user.uid,
+            email: user.email,
+            emailVerified: user.emailVerified
+          });
+        }
         // Fetch or create app user profile
         try {
           const userRef = doc(db, 'users', user.uid);
@@ -39,7 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Create user document
             const newAppUser: any = {
               id: user.uid,
-              name: user.displayName || 'Sprout User',
+              name: (user.displayName || 'Sprout User').substring(0, 120),
               avatarUrl: user.photoURL || '',
               bio: '',
               role: 'user',

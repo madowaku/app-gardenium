@@ -101,7 +101,7 @@ service cloud.firestore {
         incomingData().role == 'user' &&
         incomingData().plan == 'free' &&
         incomingData().name is string &&
-        incomingData().name.size() <= 60 &&
+        incomingData().name.size() <= 120 &&
         incomingData().createdAt is timestamp;
 
       allow update: if isOwner(userId) &&
@@ -113,7 +113,7 @@ service cloud.firestore {
           'aiTicketBalance',
           'updatedAt'
         ]) &&
-        (!('name' in incomingData()) || (incomingData().name is string && incomingData().name.size() <= 60)) &&
+        (!('name' in incomingData()) || (incomingData().name is string && incomingData().name.size() <= 120)) &&
         (!('avatarUrl' in incomingData()) || (incomingData().avatarUrl is string && incomingData().avatarUrl.size() <= 1000)) &&
         (!('bio' in incomingData()) || (incomingData().bio is string && incomingData().bio.size() <= 1000)) &&
         (!('plan' in incomingData()) || incomingData().plan in ['free', 'supporter', 'pro']) &&
@@ -238,9 +238,10 @@ service cloud.firestore {
           'updatedAt',
           'supportCount',
           'commentCount',
-          'builderReactionCount',
           'releaseStatus',
-          'visibility'
+          'visibility',
+          'supportedBy',
+          'builderReactionCount'
         ]) &&
         incomingData().supportCount == 0 &&
         incomingData().commentCount == 0 &&

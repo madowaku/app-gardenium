@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Leaf, ArrowRight, Lightbulb, Users, Code, Smartphone, Loader2 } from 'lucide-react';
-import { getPopulatedIdeas } from '../data/dummyData';
+import { Leaf, ArrowRight, Lightbulb, Users, Code, Smartphone, Loader2, Sparkles } from 'lucide-react';
 import IdeaCard from '../components/IdeaCard';
 import { PopulatedIdea } from '../types/appSproutTypes';
 import { db } from '../lib/firebase';
@@ -45,17 +44,12 @@ export default function Home({ navigate }: HomeProps) {
           } as any);
         });
 
-        if (fetchedIdeas.length === 0) {
-          const allDummy = getPopulatedIdeas();
-          setFeaturedIdeas(allDummy.filter(i => i.stage !== 'released').slice(0, 3));
-          setShippedApps(allDummy.filter(i => i.stage === 'released').slice(0, 3));
-        } else {
-          setFeaturedIdeas(fetchedIdeas.filter(i => i.stage !== 'released').slice(0, 3));
-          setShippedApps(fetchedIdeas.filter(i => i.stage === 'released').slice(0, 3));
-        }
+        setFeaturedIdeas(fetchedIdeas.filter(i => i.stage !== 'released').slice(0, 3));
+        setShippedApps(fetchedIdeas.filter(i => i.stage === 'released').slice(0, 3));
       } catch (error) {
         console.error("Error fetching featured ideas:", error);
-        setFeaturedIdeas(getPopulatedIdeas().slice(0, 3));
+        setFeaturedIdeas([]);
+        setShippedApps([]);
       } finally {
         setLoading(false);
       }
@@ -163,11 +157,27 @@ export default function Home({ navigate }: HomeProps) {
             <Loader2 className="w-8 h-8 animate-spin mb-4 text-primary" />
             <p className="font-medium">{t('common.loading')}</p>
           </div>
-        ) : (
+        ) : featuredIdeas.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
             {featuredIdeas.map(idea => (
               <IdeaCard key={idea.id} idea={idea} navigate={navigate} />
             ))}
+          </div>
+        ) : (
+          <div className="py-20 text-center bg-bg-card/50 rounded-[40px] border-2 border-dashed border-border-color/60 px-6 max-w-6xl mx-auto">
+            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-8 shadow-sm border border-border-color/30">
+              <Sparkles className="w-10 h-10 text-primary" />
+            </div>
+            <h2 className="text-3xl font-serif font-medium text-text-dark mb-4">{t('home.sproutingTitle')}</h2>
+            <p className="text-text-muted mb-10 max-w-lg mx-auto font-light leading-relaxed">
+              {language === 'ja' ? 'まだアイデアが投稿されていません。最初のアイデアを投稿してみませんか？' : 'No ideas have been planted yet. Why not be the first to plant one?'}
+            </p>
+            <button 
+              onClick={() => navigate('submit')}
+              className="px-10 py-4 bg-primary text-white rounded-full font-bold shadow-lg shadow-primary/10 hover:opacity-90 transition-all active:scale-95"
+            >
+              {language === 'ja' ? 'アイデアを投稿する' : 'Plant an Idea'}
+            </button>
           </div>
         )}
       </section>

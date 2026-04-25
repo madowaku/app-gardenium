@@ -28,15 +28,29 @@ export default function Login({ navigate }: LoginProps) {
     return `https://${authDomain}/__/auth/handler`;
   }, []);
 
-  const getLoginErrorMessage = (code?: string) => {
-    switch (code) {
+  const getLoginErrorMessage = (errorCode: string) => {
+    switch (errorCode) {
+      case 'auth/popup-closed-by-user':
+        return language === 'ja' 
+          ? 'ログインがキャンセルされました。' 
+          : 'Sign-in was cancelled.';
+      case 'auth/unauthorized-domain':
+        return language === 'ja' 
+          ? 'このドメインは認証が許可されていません。Firebase ConsoleのAuthorized domainsに "localhost" または本番ドメインを追加してください。'
+          : 'Unauthorized domain. Please add "localhost" or your production domain to Firebase Authorized domains.';
+      case 'auth/invalid-credential':
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+        return t('login.error.invalid');
+      case 'auth/too-many-requests':
+        return t('login.error.tooMany');
       case 'auth/network-request-failed':
         return t('login.error.network');
-      case 'auth/unauthorized-domain':
-        return t('login.error.unauthorizedDomain');
       case 'auth/invalid-continue-uri':
+      case 'auth/unauthorized-continue-uri':
+        const authHandlerUrl = `${window.location.origin}/__/auth/handler`;
         return language === 'ja'
-          ? `ログイン設定エラーです。Firebase Authentication の「Authorized domains」に「localhost」を追加し、Google Cloud OAuth のリダイレクト URI に「${authHandlerUrl}」を登録してください。`
+          ? `ログイン設定エラー。Firebase AuthenticationのAuthorized domainsに「localhost」を追加し、Google CloudのOAuth同意画面で「${authHandlerUrl}」をリダイレクトURIとして登録してください。`
           : `Login configuration error. Add "localhost" to Firebase Authentication Authorized domains and register "${authHandlerUrl}" as a Google Cloud OAuth redirect URI.`;
       default:
         return t('login.error.generic');

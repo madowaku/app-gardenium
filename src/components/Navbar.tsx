@@ -1,4 +1,5 @@
-import { Leaf, Globe } from 'lucide-react';
+import { Leaf, Globe, Menu, X } from 'lucide-react';
+import { useState } from 'react';
 import { PageType } from '../App';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +13,12 @@ interface NavbarProps {
 export default function Navbar({ navigate, currentPage }: NavbarProps) {
   const { t, language, toggleLanguage } = useLanguage();
   const { currentUser } = useAuth();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const handleMobileNav = (page: PageType) => {
+    setIsMobileMenuOpen(false);
+    navigate(page);
+  };
 
   return (
     <nav className="bg-bg-main/80 backdrop-blur-xl sticky top-0 z-50 border-b border-border-color/50">
@@ -122,9 +129,45 @@ export default function Navbar({ navigate, currentPage }: NavbarProps) {
                 </button>
               </>
             )}
+            <button 
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="text-text-muted p-1.5 xs:p-2 hover:bg-slate-50 rounded-full transition-colors ml-1"
+            >
+              {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden absolute top-16 left-0 w-full bg-white border-b border-border-color shadow-lg py-4 px-6 flex flex-col space-y-4 animate-in slide-in-from-top-2">
+          <button 
+            onClick={() => handleMobileNav('home')}
+            className={`text-left text-sm font-medium py-2 transition-colors ${currentPage === 'home' ? 'text-primary' : 'text-text-muted'}`}
+          >
+            {t('nav.home')}
+          </button>
+          <button 
+            onClick={() => handleMobileNav('explore')}
+            className={`text-left text-sm font-medium py-2 transition-colors ${currentPage === 'explore' ? 'text-primary' : 'text-text-muted'}`}
+          >
+            {t('nav.explore')}
+          </button>
+          <button 
+            onClick={() => handleMobileNav('salon')}
+            className={`text-left text-sm font-medium py-2 transition-colors ${currentPage === 'salon' ? 'text-primary' : 'text-text-muted'}`}
+          >
+            {t('nav.salon')}
+          </button>
+          <button 
+            onClick={() => handleMobileNav('pricing')}
+            className={`text-left text-sm font-medium py-2 transition-colors ${currentPage === 'pricing' ? 'text-primary' : 'text-text-muted'}`}
+          >
+            {t('nav.pricing')}
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

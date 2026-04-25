@@ -10,90 +10,28 @@ type FirebaseAppletConfig = {
   firestoreDatabaseId?: string;
 };
 
-function loadFirebaseConfig(): FirebaseAppletConfig {
+export function loadFirebaseConfig(): FirebaseAppletConfig {
   const configPath = path.join(process.cwd(), "firebase-applet-config.json");
   return JSON.parse(fs.readFileSync(configPath, "utf-8")) as FirebaseAppletConfig;
 }
 
-let dataApp = getApps().find(existingApp => existingApp.name === "[DEFAULT]");
-let authApp: App | undefined;
-let authProjectId: string | undefined;
+const config = loadFirebaseConfig();
+let defaultApp: App;
 
-if (!dataApp) {
-  try {
-    const config = loadFirebaseConfig();
-    authProjectId =
-      typeof config.authDomain === "string"
-        ? config.authDomain.replace(".firebaseapp.com", "")
-        : undefined;
-
-    dataApp = initializeApp({
-      projectId: config.projectId,
-      credential: applicationDefault(),
-    });
-
-    console.log(`Firebase Admin initialized for project: ${config.projectId}`);
-  } catch (err) {
-    console.error("Firebase Admin initialization error:", err);
-    dataApp = initializeApp({
-      credential: applicationDefault(),
-    });
-  }
+if (getApps().length === 0) {
+  defaultApp = initializeApp({
+    projectId: config.projectId,
+    credential: applicationDefault(),
+  });
+  console.log(`Firebase Admin initialized for project: ${config.projectId}`);
+} else {
+  defaultApp = getApps()[0];
 }
 
-if (!authProjectId) {
-  try {
-    const config = loadFirebaseConfig();
-    authProjectId =
-      typeof config.authDomain === "string"
-        ? config.authDomain.replace(".firebaseapp.com", "")
-        : undefined;
-  } catch {
-    authProjectId = undefined;
-  }
-}
-
-if (authProjectId && authProjectId !== dataApp!.options.projectId) {
-  authApp = getApps().find(existingApp => existingApp.name === "auth-app");
-  if (!authApp) {
-    authApp = initializeApp(
-      {
-        projectId: authProjectId,
-        credential: applicationDefault(),
-      },
-      "auth-app"
-    );
-  }
-}
-
-export const getAdminAuthForProject = (projectId?: string) => {
-  if (!projectId) {
-    return getAuth(authApp || dataApp!);
-  }
-
-  const existingApp =
-    getApps().find(app => app.options.projectId === projectId) ||
-    getApps().find(app => app.name === `auth-${projectId}`);
-
-  if (existingApp) {
-    return getAuth(existingApp);
-  }
-
-  const projectApp = initializeApp(
-    {
-      projectId,
-      credential: applicationDefault(),
-    },
-    `auth-${projectId}`
-  );
-
-  return getAuth(projectApp);
-};
-
-export const adminAuth = getAuth(authApp || dataApp!);
+export const adminAuth = getAuth(defaultApp);
 
 // Use the specific Firestore database ID from config if present
-const firestoreConfig = loadFirebaseConfig();
-export const adminDb = firestoreConfig.firestoreDatabaseId
-  ? getFirestore(dataApp!, firestoreConfig.firestoreDatabaseId)
-  : getFirestore(dataApp!);
+const databaseId = config.firestoreDatabaseId;
+export const adminDb = databaseId && databaseId !== "(default)"
+  ? getFirestore(defaultApp, databaseId)
+  : getFirestore(defaultApp);

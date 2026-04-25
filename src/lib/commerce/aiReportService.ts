@@ -12,16 +12,13 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { AiReport } from '../../types/commerce';
-import { Type } from "@google/genai";
-import { getAIModelForTask, getAIService } from '../ai/modelRouting';
+import { authenticatedFetch } from '../authenticatedFetch';
 
 /**
  * Generates an AI analysis report based on comments of a post.
  */
 export async function generateAiReport(userId: string, postId: string, isPremium: boolean = false): Promise<string> {
   try {
-    const ai = getAIService();
-    
     // Fetch Idea Data
     const ideaSnapshot = await getDoc(doc(db, 'ideas', postId));
     const ideaData = ideaSnapshot.exists() ? ideaSnapshot.data() : null;
@@ -36,52 +33,25 @@ export async function generateAiReport(userId: string, postId: string, isPremium
     const commentsText = comments.length > 0 
       ? comments.map((c, i) => `Comment ${i + 1}: ${c.text}`).join('\n')
       : "No comments yet.";
-      
-    // Enhanced prompt for premium
-    const premiumInstructions = isPremium 
-      ? "As a premium deep dive, provide extra details on feasibility and specific technical challenges."
-      : "";
 
-    const prompt = `
-      You are an expert product manager analyzing user feedback.
-      Please analyze the following product idea and its user comments to generate a structured report.
-      Output the analysis in Japanese by default, unless the comments are overwhelmingly in another language.
-      ${premiumInstructions}
-      
-      # Product Idea
-      Title: ${ideaTitle}
-      Description: ${ideaSummary}
-      
-      # User Comments
-      ${commentsText}
-      
-      Generate a report with:
-      - summary: A general overview of the sentiment and feedback. (about 2-3 sentences)
-      - commonRequests: Top 3 requested features or improvements.
-      - concerns: Top 3 concerns or complaints.
-      - nextActions: 3 actionable next steps for the creator based on the feedback.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: getAIModelForTask(isPremium ? 'analysis_report_premium' : 'analysis_report'),
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            summary: { type: Type.STRING },
-            commonRequests: { type: Type.ARRAY, items: { type: Type.STRING } },
-            concerns: { type: Type.ARRAY, items: { type: Type.STRING } },
-            nextActions: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ["summary", "commonRequests", "concerns", "nextActions"]
+    const response = await authenticatedFetch('/api/ai/analyze-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        isPremium,
+        activityData: {
+          ideaTitle,
+          ideaSummary,
+          commentsText
         }
-      }
+      })
     });
 
-    const resultText = response.text || "{}";
-    const parsedData = JSON.parse(resultText);
+    if (!response.ok) {
+      throw new Error('AI analysis request failed');
+    }
+
+    const parsedData = await response.json();
 
     const reportData = {
       postId,
