@@ -27,12 +27,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { APP_PLANS, PlanDefinition } from '../lib/billing/plans';
 import { billingService } from '../services/billingService';
 import PurchaseConfirmModal from './commerce/PurchaseConfirmModal';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { localizePath } from '../lib/i18nRoutes';
 
 const PricingPage: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { currentUser, appUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   
   // Billing state
@@ -47,7 +49,7 @@ const PricingPage: React.FC = () => {
 
   const handlePlanClick = (plan: PlanDefinition) => {
     if (!currentUser) {
-      navigate('/login'); // Navigate to login if not authenticated
+      navigate(localizePath('/login', language), { state: { from: location.pathname } });
       return;
     }
 

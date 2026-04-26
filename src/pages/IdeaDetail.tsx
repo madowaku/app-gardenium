@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, MessageSquare, Loader2, Wrench, Sprout, TrendingUp, FlaskConical, TestTube2, ThumbsUp, Share2, Sparkles, UserPlus, PenTool, LayoutGrid, Globe, Bot, Check, ExternalLink, CheckCircle2, Award, Calendar, History, ArrowUpRight, Leaf } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Loader2, Wrench, Sprout, TrendingUp, FlaskConical, TestTube2, ThumbsUp, Share2, Sparkles, UserPlus, PenTool, LayoutGrid, Globe, Bot, Check, ExternalLink, CheckCircle2, Award, Calendar, History, ArrowUpRight, Leaf, Flag } from 'lucide-react';
 import { getPopulatedIdeaById, getPopulatedIdeas, getReleasesByIdeaId, getGrowthEventsByIdeaId } from '../data/dummyData';
 import { IdeaStage, STAGE_LABELS, PopulatedIdea, Release, GrowthEvent } from '../types/appSproutTypes';
 import { db } from '../lib/firebase';
@@ -12,6 +12,7 @@ import { createPurchase, processMockPayment, fulfillPurchase } from '../lib/comm
 import PurchaseConfirmModal from '../components/commerce/PurchaseConfirmModal';
 import { AiReportCard } from '../components/commerce/AiReportCard';
 import { authenticatedFetch } from '../lib/authenticatedFetch';
+import Seo from '../components/Seo';
 
 interface Comment {
   id: string;
@@ -50,7 +51,7 @@ const getStageConfig = (stage: IdeaStage) => {
 };
 
 export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
-  const { currentUser } = useAuth();
+  const { currentUser, appUser } = useAuth();
   const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'overview' | 'wireframes' | 'discussion'>('overview');
   const [showShareToast, setShowShareToast] = useState(false);
@@ -66,6 +67,8 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [isSupporting, setIsSupporting] = useState(false);
   const [hasSupported, setHasSupported] = useState(false);
+  const [isReporting, setIsReporting] = useState(false);
+  const [reportSent, setReportSent] = useState(false);
 
   // Commerce & AI Reports
   const [reports, setReports] = useState<AiReport[]>([]);
@@ -112,8 +115,8 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
           let authorName = t('common.sproutThinker');
           if (data.authorId) {
              const userSnap = await getDoc(doc(db, 'users', data.authorId));
-             if (userSnap.exists() && userSnap.data().displayName) {
-                 authorName = userSnap.data().displayName;
+             if (userSnap.exists() && userSnap.data().name) {
+                 authorName = userSnap.data().name;
              }
           }
 
@@ -201,7 +204,7 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
         ideaId,
         text: newComment.trim(),
         authorId: currentUser.uid,
-        authorName: currentUser.displayName || 'Anonymous',
+        authorName: appUser?.name || currentUser.displayName || 'Anonymous',
         createdAt: serverTimestamp()
       };
       
@@ -218,7 +221,7 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
         await addDoc(collection(db, 'notifications'), {
           userId: idea.authorId,
           type: 'comment',
-          message: `${currentUser.displayName || '誰か'}さんが「${idea.title}」にコメントしました。`,
+          message: `${appUser?.name || currentUser.displayName || '誰か'}さんが「${idea.title}」にコメントしました。`,
           link: `/ideas/${ideaId}`,
           read: false,
           createdAt: serverTimestamp()
@@ -277,7 +280,7 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
           await addDoc(collection(db, 'notifications'), {
             userId: idea.authorId,
             type: 'like',
-            message: `${currentUser.displayName || '誰か'}さんが「${idea.title}」にLIKEしました！`,
+            message: `${appUser?.name || currentUser.displayName || '誰か'}さんが「${idea.title}」にLIKEしました！`,
             link: `/ideas/${ideaId}`,
             read: false,
             createdAt: serverTimestamp()
@@ -304,7 +307,7 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
       const purchaseId = await createPurchase(currentUser.uid, reportProduct, ideaId);
       await processMockPayment(purchaseId);
       setIsGeneratingReport(true);
-      await fulfillPurchase(purchaseId);
+      await fulfillPurchase(purchaseId, language);
       setIsPurchaseModalOpen(false);
     } catch (error) {
       console.error('Purchase failed:', error);
@@ -334,6 +337,36 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
     }
   };
 
+  const handleReport = async () => {
+    if (!currentUser || !ideaId || isReporting) {
+      if (!currentUser) navigate('login');
+      return;
+    }
+
+    const reason = window.prompt(t('moderation.reportPrompt'));
+    if (reason === null) return;
+
+    setIsReporting(true);
+    try {
+      await addDoc(collection(db, 'contentReports'), {
+        reporterId: currentUser.uid,
+        targetType: 'idea',
+        targetId: ideaId,
+        targetTitle: idea?.title || '',
+        reason: 'other',
+        details: reason.trim().slice(0, 1000),
+        status: 'open',
+        createdAt: serverTimestamp(),
+      });
+      setReportSent(true);
+      setTimeout(() => setReportSent(false), 3000);
+    } catch (err) {
+      console.error('Report failed:', err);
+    } finally {
+      setIsReporting(false);
+    }
+  };
+
   const handleTranslate = async () => {
     if (!idea || isTranslating) return;
     setIsTranslating(true);
@@ -360,7 +393,8 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
       });
 
       if (!response.ok) {
-        throw new Error('Translation failed');
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error || 'Translation failed');
       }
 
       const translatedData = await response.json();
@@ -387,9 +421,15 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
   }
 
   const stageConfig = getStageConfig(idea.stage);
+  const seoTitle = `${idea.title} | App Gardenium`;
+  const seoDescription = idea.oneLineSummary || (language === 'ja'
+    ? 'App Gardeniumで育っているアプリのアイデアです。'
+    : 'An app idea growing on App Gardenium.');
+  const seoImage = idea.id ? `/api/og/ideas/${idea.id}.png` : undefined;
 
   return (
     <div className="max-w-5xl mx-auto pb-20">
+      <Seo title={seoTitle} description={seoDescription} image={seoImage} type="article" />
       <button 
         onClick={() => navigate('explore')}
         className="flex items-center gap-2 text-text-muted hover:text-text-dark font-medium mb-8 transition-colors"
@@ -548,6 +588,14 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
           <button onClick={handleShare} className="flex items-center gap-2 px-6 py-3.5 bg-bg-card border border-border-color text-text-muted rounded-full font-medium hover:bg-bg-main transition-colors">
             <Share2 size={18} />
             {t('idea.share')}
+          </button>
+          <button
+            onClick={handleReport}
+            disabled={isReporting}
+            className="flex items-center gap-2 px-4 py-3.5 text-text-muted rounded-full font-medium hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-50"
+          >
+            {isReporting ? <Loader2 size={16} className="animate-spin" /> : <Flag size={16} />}
+            {reportSent ? t('moderation.reportSent') : t('moderation.report')}
           </button>
         </div>
 

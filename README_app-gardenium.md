@@ -144,7 +144,7 @@ Relevant files:
 Current Firebase project target for App Gardenium:
 
 ```text
-gen-lang-client-0325724503
+gen-lang-client-0954249782
 ```
 
 If you clone this repository for a different Firebase project, update:

@@ -1,9 +1,11 @@
 import { Leaf, Globe, Menu, X } from 'lucide-react';
 import { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { PageType } from '../App';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationsDropdown from './NotificationsDropdown';
+import { switchPathLanguage } from '../lib/i18nRoutes';
 
 interface NavbarProps {
   navigate: (page: PageType) => void;
@@ -12,12 +14,22 @@ interface NavbarProps {
 
 export default function Navbar({ navigate, currentPage }: NavbarProps) {
   const { t, language, toggleLanguage } = useLanguage();
-  const { currentUser } = useAuth();
+  const routerNavigate = useNavigate();
+  const location = useLocation();
+  const { currentUser, appUser } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const avatarUrl = appUser?.avatarUrl || currentUser?.photoURL || '';
+  const displayName = appUser?.name || currentUser?.displayName || '';
 
   const handleMobileNav = (page: PageType) => {
     setIsMobileMenuOpen(false);
     navigate(page);
+  };
+
+  const handleLanguageToggle = () => {
+    const nextLanguage = language === 'en' ? 'ja' : 'en';
+    toggleLanguage();
+    routerNavigate(`${switchPathLanguage(location.pathname, nextLanguage)}${location.search}${location.hash}`);
   };
 
   return (
@@ -75,17 +87,17 @@ export default function Navbar({ navigate, currentPage }: NavbarProps) {
                   onClick={() => navigate('profile')}
                   className="h-8 w-8 rounded-full border border-border-color bg-bg-main flex items-center justify-center text-text-muted hover:opacity-80 transition-opacity overflow-hidden"
                 >
-                  {currentUser?.photoURL ? (
-                    <img src={currentUser.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-xs font-bold text-primary">{currentUser.displayName?.charAt(0).toUpperCase() || 'U'}</span>
+                    <span className="text-xs font-bold text-primary">{displayName.charAt(0).toUpperCase() || 'U'}</span>
                   )}
                 </button>
               </>
             )}
             <div className="h-4 w-px bg-border-color mx-2"></div>
             <button
-              onClick={toggleLanguage}
+              onClick={handleLanguageToggle}
               className="flex items-center gap-1.5 text-xs font-medium text-text-muted hover:text-text-dark transition-colors bg-white px-3 py-1.5 rounded-full shadow-sm border border-border-color"
             >
               <Globe size={14} />
@@ -95,7 +107,7 @@ export default function Navbar({ navigate, currentPage }: NavbarProps) {
 
           <div className="flex items-center md:hidden gap-0.5 xs:gap-1 sm:gap-4">
             <button
-              onClick={toggleLanguage}
+              onClick={handleLanguageToggle}
               className="text-text-muted p-1.5 xs:p-2 hover:bg-slate-50 rounded-full transition-colors"
               aria-label={t('nav.language')}
             >
@@ -120,10 +132,10 @@ export default function Navbar({ navigate, currentPage }: NavbarProps) {
                 <NotificationsDropdown navigate={navigate} />
                 <button onClick={() => navigate('profile')} className="text-text-muted hover:opacity-80 transition-opacity p-1">
                   <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full border border-border-color bg-bg-main flex items-center justify-center overflow-hidden">
-                     {currentUser?.photoURL ? (
-                      <img src={currentUser.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                     {avatarUrl ? (
+                      <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-[10px] sm:text-xs font-bold text-primary">{currentUser.displayName?.charAt(0).toUpperCase() || 'U'}</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-primary">{displayName.charAt(0).toUpperCase() || 'U'}</span>
                     )}
                   </div>
                 </button>

@@ -139,3 +139,6 @@ export const salonService = {
     });
   }
 };
+
+export const MAX_SALON_POST_BODY_LENGTH = 2000;
+export const MAX_SALON_COMMENT_LENGTH = 1000;

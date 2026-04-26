@@ -6,7 +6,7 @@ import { adminDb } from "./admin";
  */
 export const PLAN_LIMITS = {
   free: {
-    aiSummaries: 0,
+    aiSummaries: 3,
     reports: 0,
   },
   supporter: {
@@ -24,19 +24,40 @@ export const PLAN_LIMITS = {
  */
 export async function ensureMonthlyUsage(uid: string, user: User): Promise<User> {
   const now = new Date();
-  const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+  const aiDayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  const reportsMonthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+  const currentUsage = user.usage;
 
-  if (user.usage?.monthKey === monthKey) {
+  const updatedUsage = {
+    monthKey: reportsMonthKey,
+    aiDayKey,
+    reportsMonthKey,
+    aiSummariesUsed: currentUsage?.aiDayKey === aiDayKey ? currentUsage.aiSummariesUsed : 0,
+    reportsUsed: currentUsage?.reportsMonthKey === reportsMonthKey ? currentUsage.reportsUsed : 0,
+  };
+
+  if (
+    currentUsage?.aiDayKey === updatedUsage.aiDayKey &&
+    currentUsage?.reportsMonthKey === updatedUsage.reportsMonthKey &&
+    currentUsage?.aiSummariesUsed === updatedUsage.aiSummariesUsed &&
+    currentUsage?.reportsUsed === updatedUsage.reportsUsed
+  ) {
     return user;
   }
 
-  const updatedUsage = {
-    monthKey,
-    aiSummariesUsed: 0,
-    reportsUsed: 0,
-  };
-
-  await adminDb.collection('users').doc(uid).update({ usage: updatedUsage });
+  try {
+    await adminDb.collection('users').doc(uid).update({ usage: updatedUsage });
+  } catch (error: any) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn("[Usage] Skipping monthly usage persistence:", {
+        uid,
+        message: error?.message,
+        code: error?.code,
+      });
+    } else {
+      throw error;
+    }
+  }
   return { ...user, usage: updatedUsage };
 }
 
@@ -91,7 +112,19 @@ export async function ensureMonthlyTopUps(uid: string, user: User): Promise<User
     boostSupportCount: 0, // Reset monthly
   };
 
-  await adminDb.collection('users').doc(uid).update({ topUps: updatedTopUps });
+  try {
+    await adminDb.collection('users').doc(uid).update({ topUps: updatedTopUps });
+  } catch (error: any) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn("[Usage] Skipping monthly top-up persistence:", {
+        uid,
+        message: error?.message,
+        code: error?.code,
+      });
+    } else {
+      throw error;
+    }
+  }
   return { ...user, topUps: updatedTopUps };
 }
 

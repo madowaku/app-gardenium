@@ -39,7 +39,9 @@ export interface UserTopUps {
 }
 
 export interface UserUsage {
-  monthKey: string;
+  monthKey?: string;
+  aiDayKey?: string;
+  reportsMonthKey?: string;
   aiSummariesUsed: number;
   reportsUsed: number;
 }

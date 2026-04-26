@@ -16,23 +16,6 @@ service firebase.storage {
         && request.resource.size < 10 * 1024 * 1024;
     }
 
-    function assetDoc(assetId) {
-      return firestore.get(
-        /databases/(default)/documents/assets/$(assetId)
-      );
-    }
-
-    function assetExists(assetId) {
-      return assetDoc(assetId) != null
-        && assetDoc(assetId).data != null;
-    }
-
-    function isSharedAsset(assetId) {
-      return assetExists(assetId)
-        && ('visibility' in assetDoc(assetId).data)
-        && assetDoc(assetId).data.visibility == 'shared';
-    }
-
     // ----------------------------------------------------------------------
     // Avatars
     // Path example: avatars/{uid}/avatar.jpg
@@ -47,11 +30,11 @@ service firebase.storage {
     // Assets
     // Path example: assets/{uid}/{assetId}/original
     // Owner can always read/write.
-    // Other users can read only when the corresponding Firestore asset doc
-    // is marked visibility == 'shared'
+    // Note: Due to Firebase limitations, Storage Rules cannot cross-reference
+    // a named Firestore database. Thus, we allow read for all signed-in users.
     // ----------------------------------------------------------------------
     match /assets/{uid}/{assetId}/{fileName} {
-      allow read: if isOwner(uid) || isSharedAsset(assetId);
+      allow read: if signedIn();
       allow write: if isOwner(uid) && isImageUpload();
     }
 

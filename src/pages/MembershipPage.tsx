@@ -207,6 +207,13 @@ const MembershipPage: React.FC<MembershipPageProps> = ({ navigate }) => {
                     {t('membership.upgradeSupporter')}
                     <ArrowRight size={16} />
                   </button>
+                  <button 
+                    onClick={() => navigate('salon')}
+                    className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-all active:scale-95"
+                  >
+                    {t('membership.greenhouse')}
+                    <Sprout size={16} />
+                  </button>
                 </>
               )}
               
@@ -372,12 +379,20 @@ const MembershipPage: React.FC<MembershipPageProps> = ({ navigate }) => {
                   <p className="text-sm font-medium text-slate-500 italic mb-4">
                     {t('membership.status.free')}
                   </p>
-                  <button 
-                    onClick={() => navigate('pricing')}
-                    className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors shadow-sm"
-                  >
-                    {t('pricing.ctaBtn')}
-                  </button>
+                  <div className="space-y-3">
+                    <button 
+                      onClick={() => navigate('salon')}
+                      className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors shadow-sm"
+                    >
+                      {t('membership.greenhouse')}
+                    </button>
+                    <button 
+                      onClick={() => navigate('pricing')}
+                      className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-50 transition-colors shadow-sm"
+                    >
+                      {t('pricing.ctaBtn')}
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <>

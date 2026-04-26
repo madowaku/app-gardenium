@@ -2,9 +2,11 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Leaf, Mail } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { localizePath } from '../lib/i18nRoutes';
 
 const Footer: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const toLocalized = (path: string) => localizePath(path, language);
 
   return (
     <footer className="w-full border-t border-slate-100 bg-white py-12 px-6 mt-16 selection:bg-emerald-50 selection:text-emerald-700">
@@ -22,6 +24,9 @@ const Footer: React.FC = () => {
               {t('footer.tagline1')}<br />
               {t('footer.tagline2')}
             </p>
+            <div className="mt-4 p-3 bg-slate-50 rounded-lg text-xs text-slate-500 leading-relaxed max-w-sm border border-slate-100">
+              {t('footer.betaNotice')}
+            </div>
           </div>
 
           {/* 右側: リンク */}
@@ -30,22 +35,22 @@ const Footer: React.FC = () => {
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('footer.support')}</p>
               <ul className="space-y-3">
                 <li>
-                  <Link to="/terms" className="text-sm text-slate-500 hover:text-emerald-600 transition-colors">
+                  <Link to={toLocalized('/terms')} className="text-sm text-slate-500 hover:text-emerald-600 transition-colors">
                     {t('footer.terms')}
                   </Link>
                 </li>
                 <li>
-                  <Link to="/privacy" className="text-sm text-slate-500 hover:text-emerald-600 transition-colors">
+                  <Link to={toLocalized('/privacy')} className="text-sm text-slate-500 hover:text-emerald-600 transition-colors">
                     {t('footer.privacy')}
                   </Link>
                 </li>
                 <li>
-                  <Link to="/commerce" className="text-sm text-slate-500 hover:text-emerald-600 transition-colors">
+                  <Link to={toLocalized('/commerce')} className="text-sm text-slate-500 hover:text-emerald-600 transition-colors">
                     {t('footer.commerce')}
                   </Link>
                 </li>
                 <li>
-                  <a href="mailto:raindrum909@gmail.com" className="text-sm text-slate-500 hover:text-emerald-600 transition-colors flex items-center gap-1.5 group">
+                  <a href="https://forms.gle/FHZoVf1ez5WHbqZb7" target="_blank" rel="noopener noreferrer" className="text-sm text-slate-500 hover:text-emerald-600 transition-colors flex items-center gap-1.5 group">
                     <Mail size={14} className="text-slate-300 group-hover:text-emerald-500 transition-colors" />
                     {t('footer.contact')}
                   </a>

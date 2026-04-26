@@ -1,10 +1,12 @@
 import { Request, Response, NextFunction } from "express";
-import { adminAuth, adminDb, getAdminAuthForProject } from "./admin";
+import { DecodedIdToken } from "firebase-admin/auth";
+import { adminAuth, adminDb } from "./admin";
 import { User } from "../../types/appSproutTypes";
 
 export interface AuthenticatedRequest extends Request {
   user?: User;
   uid?: string;
+  firebaseToken?: DecodedIdToken;
 }
 
 /**
@@ -20,6 +22,7 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
   try {
     const decodedToken = await adminAuth.verifyIdToken(idToken);
     const uid = decodedToken.uid;
+    req.firebaseToken = decodedToken;
     
     // Debug log for authentication in development
     if (process.env.NODE_ENV !== 'production') {
@@ -32,8 +35,15 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       });
     }
 
-    const userDoc = await adminDb.collection('users').doc(uid).get();
-    if (!userDoc.exists) {
+    try {
+      const userDoc = await adminDb.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        req.uid = uid;
+        req.user = { id: userDoc.id, ...userDoc.data() } as User;
+        next();
+        return;
+      }
+
       const bootstrapUser: any = {
         id: uid,
         name: decodedToken.name || decodedToken.email || 'Sprout User',
@@ -50,11 +60,27 @@ export async function authenticate(req: AuthenticatedRequest, res: Response, nex
       req.user = bootstrapUser as User;
       next();
       return;
+    } catch (profileError: any) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn("[Auth Debug] User profile lookup skipped:", {
+          message: profileError?.message,
+          code: profileError?.code,
+        });
+      }
+      req.uid = uid;
+      req.user = {
+        id: uid,
+        name: decodedToken.name || decodedToken.email || 'Sprout User',
+        avatarUrl: decodedToken.picture || '',
+        bio: '',
+        role: 'user',
+        plan: 'free',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      } as User;
+      next();
+      return;
     }
-
-    req.uid = uid;
-    req.user = { id: userDoc.id, ...userDoc.data() } as User;
-    next();
   } catch (error: any) {
     const isDev = process.env.NODE_ENV !== 'production';
     if (isDev) {

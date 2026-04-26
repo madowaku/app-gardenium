@@ -98,7 +98,12 @@ export default function PurchaseConfirmModal({
                       {planKey === 'pro' ? <Sparkles className="text-sky-400" size={24} /> : <Leaf className="text-emerald-500" size={24} />}
                       {t(`plan.${planKey}.confirmTitle`)}
                     </>
-                  ) : t('commerce.confirmPurchase')}
+                  ) : (
+                    <>
+                      <Sparkles className="text-emerald-500" size={24} />
+                      {t('commerce.confirmPurchase')}
+                    </>
+                  )}
                 </h2>
               </div>
               {!isProcessing && (
@@ -123,7 +128,7 @@ export default function PurchaseConfirmModal({
               <div className={`rounded-3xl p-6 border ${planKey === 'pro' ? 'bg-sky-50/50 border-sky-100' : 'bg-emerald-50/50 border-emerald-100'}`}>
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">{t('billing.billingCycle')}</span>
+                    <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">{plan ? t('billing.billingCycle') : t('commerce.purchaseAmount')}</span>
                     <span className={`text-2xl font-bold ${planKey === 'pro' ? 'text-sky-600' : 'text-emerald-600'}`}>
                       {plan ? t(`plan.${planKey}.price`) : product?.priceLabel}
                     </span>
@@ -164,7 +169,7 @@ export default function PurchaseConfirmModal({
                 <div className="flex gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                   <Info size={18} className="text-slate-400 shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">提供時期 / Delivery</h4>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">{t('commerce.deliveryTiming')}</h4>
                     <p className="text-sm text-slate-600 leading-relaxed">{product.deliveryTiming}</p>
                   </div>
                 </div>

@@ -4,11 +4,16 @@ dotenv.config({ path: ".env.local" });
 dotenv.config();
 
 import express from "express";
+import type { Request } from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs/promises";
+import sharp from "sharp";
 import cors from "cors";
 import bodyParser from "body-parser";
 import Stripe from "stripe";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { FieldValue } from "firebase-admin/firestore";
 import { authenticate, AuthenticatedRequest } from "./src/lib/server/auth";
 import { adminDb, loadFirebaseConfig } from "./src/lib/server/admin";
@@ -36,8 +41,329 @@ const stripe = stripeSecretKey
   ? new Stripe(stripeSecretKey, { apiVersion: "2025-01-27" as any })
   : null;
 
+function htmlEscape(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function routeLanguage(pathname: string) {
+  const first = pathname.split("/").filter(Boolean)[0];
+  return first === "ja" ? "ja" : "en";
+}
+
+function stripRouteLanguage(pathname: string) {
+  return pathname.replace(/^\/(en|ja)(?=\/|$)/, "") || "/";
+}
+
+function localizedPath(pathname: string, lang: "en" | "ja") {
+  const stripped = stripRouteLanguage(pathname);
+  return stripped === "/" ? `/${lang}` : `/${lang}${stripped}`;
+}
+
+function normalizeSiteUrl(rawUrl?: string | null) {
+  return rawUrl?.replace(/\/$/, "") || "";
+}
+
+function getRequestSiteUrl(req: Request) {
+  const forwardedProto = req.header("x-forwarded-proto")?.split(",")[0]?.trim();
+  const forwardedHost = req.header("x-forwarded-host")?.split(",")[0]?.trim();
+  const protocol = forwardedProto || req.protocol || "https";
+  const host = forwardedHost || req.get("host");
+
+  if (!host) {
+    return normalizeSiteUrl(process.env.PUBLIC_SITE_URL) || "https://app-gardenium.com";
+  }
+
+  return `${protocol}://${host}`.replace(/\/$/, "");
+}
+
+function getFirestoreRestValue(field: any): any {
+  if (!field || typeof field !== "object") return undefined;
+  if ("stringValue" in field) return field.stringValue;
+  if ("integerValue" in field) return Number(field.integerValue);
+  if ("doubleValue" in field) return Number(field.doubleValue);
+  if ("booleanValue" in field) return Boolean(field.booleanValue);
+  if ("timestampValue" in field) return field.timestampValue;
+  if ("arrayValue" in field) return (field.arrayValue.values || []).map(getFirestoreRestValue);
+  if ("mapValue" in field) {
+    return Object.fromEntries(
+      Object.entries(field.mapValue.fields || {}).map(([key, value]) => [key, getFirestoreRestValue(value)])
+    );
+  }
+  return undefined;
+}
+
+async function fetchPublicIdeaForSeo(ideaId: string) {
+  const ideas = await fetchPublicIdeasForSeo();
+  return ideas.find((idea: any) => idea.id === ideaId) || null;
+}
+
+async function fetchPublicIdeasForSeo(limit = 500) {
+  try {
+    const config = loadFirebaseConfig() as any;
+    if (!config.projectId || !config.apiKey || !config.firestoreDatabaseId) return [];
+    const url = new URL(
+      `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/${config.firestoreDatabaseId}/documents:runQuery`
+    );
+    url.searchParams.set("key", config.apiKey);
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: "ideas" }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: "visibility" },
+              op: "EQUAL",
+              value: { stringValue: "public" },
+            },
+          },
+          limit,
+        },
+      }),
+    });
+    if (!response.ok) return [];
+    const payload = await response.json();
+    return (payload || [])
+      .map((row: any) => {
+        const doc = row.document;
+        if (!doc) return null;
+        const fields = doc.fields || {};
+        const id = String(doc.name || "").split("/").pop();
+        return {
+          id,
+          title: getFirestoreRestValue(fields.title) as string | undefined,
+          oneLineSummary: getFirestoreRestValue(fields.oneLineSummary) as string | undefined,
+          screenshots: getFirestoreRestValue(fields.screenshots) as string[] | undefined,
+          visibility: getFirestoreRestValue(fields.visibility) as string | undefined,
+          updatedAt: getFirestoreRestValue(fields.updatedAt) as string | undefined,
+          createdAt: getFirestoreRestValue(fields.createdAt) as string | undefined,
+        };
+      })
+      .filter(Boolean)
+      .filter((idea: any) => idea.id && idea.visibility === "public");
+  } catch {
+    return [];
+  }
+}
+
+function renderOgSvg(title: string, description: string) {
+  const safeTitle = htmlEscape(title).slice(0, 120);
+  const safeDescription = htmlEscape(description).slice(0, 180);
+  const titleLines = safeTitle.match(/.{1,24}(\s|$)|.{1,24}/g)?.slice(0, 3) || [safeTitle];
+  const descLines = safeDescription.match(/.{1,54}(\s|$)|.{1,54}/g)?.slice(0, 2) || [safeDescription];
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#fffaf0"/>
+  <rect x="54" y="54" width="1092" height="522" rx="36" fill="#ffffff" stroke="#e7ddca" stroke-width="2"/>
+  <rect x="54" y="54" width="1092" height="12" rx="6" fill="#36b37e"/>
+  <text x="98" y="130" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="700" fill="#36b37e">App Gardenium</text>
+  <text x="98" y="214" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-weight="700" fill="#26211d">
+    ${titleLines.map((line, index) => `<tspan x="98" dy="${index === 0 ? 0 : 74}">${line.trim()}</tspan>`).join("")}
+  </text>
+  <text x="100" y="470" font-family="Inter, Arial, sans-serif" font-size="30" fill="#6c6258">
+    ${descLines.map((line, index) => `<tspan x="100" dy="${index === 0 ? 0 : 40}">${line.trim()}</tspan>`).join("")}
+  </text>
+  <text x="100" y="542" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700" fill="#f05a3b">App idea growing with the community</text>
+</svg>`;
+}
+
+async function renderOgPng(title: string, description: string) {
+  const svg = renderOgSvg(title, description);
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+async function renderSitemapXml(siteUrl: string) {
+  const staticPaths = ["/", "/ideas", "/pricing", "/salon", "/terms", "/privacy"];
+  const ideas = await fetchPublicIdeasForSeo();
+  const entries: string[] = [];
+
+  for (const pathValue of staticPaths) {
+    for (const lang of ["en", "ja"] as const) {
+      const loc = `${siteUrl}${localizedPath(pathValue, lang)}`;
+      entries.push(`  <url>
+    <loc>${htmlEscape(loc)}</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="${htmlEscape(`${siteUrl}${localizedPath(pathValue, "en")}`)}" />
+    <xhtml:link rel="alternate" hreflang="ja" href="${htmlEscape(`${siteUrl}${localizedPath(pathValue, "ja")}`)}" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="${htmlEscape(pathValue === "/" ? `${siteUrl}/` : `${siteUrl}${localizedPath(pathValue, "en")}`)}" />
+  </url>`);
+    }
+  }
+
+  for (const idea of ideas) {
+    const pathValue = `/ideas/${idea.id}`;
+    const lastmod = idea.updatedAt || idea.createdAt;
+    for (const lang of ["en", "ja"] as const) {
+      entries.push(`  <url>
+    <loc>${htmlEscape(`${siteUrl}${localizedPath(pathValue, lang)}`)}</loc>
+    ${lastmod ? `<lastmod>${htmlEscape(new Date(lastmod).toISOString())}</lastmod>` : ""}
+    <xhtml:link rel="alternate" hreflang="en" href="${htmlEscape(`${siteUrl}${localizedPath(pathValue, "en")}`)}" />
+    <xhtml:link rel="alternate" hreflang="ja" href="${htmlEscape(`${siteUrl}${localizedPath(pathValue, "ja")}`)}" />
+  </url>`);
+    }
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+${entries.join("\n")}
+</urlset>`;
+}
+
+function renderRobotsTxt(siteUrl: string) {
+  return `User-agent: *
+Allow: /
+Disallow: /en/login
+Disallow: /ja/login
+Disallow: /en/mypage
+Disallow: /ja/mypage
+Disallow: /en/membership
+Disallow: /ja/membership
+Disallow: /en/ideas/new
+Disallow: /ja/ideas/new
+Disallow: /en/tester-calls/new
+Disallow: /ja/tester-calls/new
+Disallow: /en/admin/
+Disallow: /ja/admin/
+Disallow: /en/billing/
+Disallow: /ja/billing/
+Disallow: /en/commerce
+Disallow: /ja/commerce
+
+Sitemap: ${siteUrl}/sitemap.xml
+`;
+}
+
+async function consumeAiHelperQuota(req: AuthenticatedRequest, res: express.Response) {
+  const user = await ensureMonthlyUsage(req.uid!, req.user!);
+  const { allowed, remaining } = await consumeUsage(req.uid!, user, "aiSummaries");
+
+  if (!allowed) {
+    res.status(429).json({
+      error: "Daily beta AI helper limit reached",
+      remaining: 0,
+      limit: user.plan === "pro" ? 50 : user.plan === "supporter" ? 10 : 3,
+    });
+    return null;
+  }
+
+  return { user, remaining };
+}
+
+async function renderIndexWithSeo(indexPath: string, requestPath: string, siteUrl: string) {
+  let html = await fs.readFile(indexPath, "utf-8");
+  const lang = routeLanguage(requestPath);
+  const pathOnly = requestPath.split("?")[0];
+  const stripped = stripRouteLanguage(pathOnly);
+  const canonical = `${siteUrl}${localizedPath(stripped, lang)}`;
+  const english = `${siteUrl}${localizedPath(stripped, "en")}`;
+  const japanese = `${siteUrl}${localizedPath(stripped, "ja")}`;
+  const isNoindex = [
+    "/login",
+    "/mypage",
+    "/membership",
+    "/ideas/new",
+    "/tester-calls/new",
+    "/admin/boosts",
+    "/billing/success",
+    "/billing/cancel",
+    "/commerce",
+  ].some(path => stripped === path || stripped.startsWith(`${path}/`));
+
+  let title = lang === "ja"
+    ? "App Gardenium | アプリのアイデアを、みんなで育てる"
+    : "App Gardenium | Grow app ideas together";
+  let description = lang === "ja"
+    ? "「あったらいいな」のアプリ案を投稿し、フィードバックや初期テスターと出会いながら形にしていくコミュニティです。"
+    : "Plant tiny app ideas, get feedback, find early testers, and grow them into real products with makers and early users.";
+  let image = `${siteUrl}/og-image.png`;
+
+  const ideaMatch = stripped.match(/^\/ideas\/([^/]+)$/);
+  if (ideaMatch) {
+    const idea = await fetchPublicIdeaForSeo(ideaMatch[1]);
+    if (idea?.title) {
+      title = `${idea.title} | App Gardenium`;
+    }
+    if (idea?.oneLineSummary) {
+      description = idea.oneLineSummary;
+    }
+    if (idea?.title) {
+      image = `${siteUrl}/api/og/ideas/${encodeURIComponent(ideaMatch[1])}.png`;
+    }
+  }
+
+  const escapedTitle = htmlEscape(title);
+  const escapedDescription = htmlEscape(description);
+  const escapedCanonical = htmlEscape(canonical);
+  const escapedImage = htmlEscape(image);
+
+  html = html
+    .replace(/<html lang="[^"]*">/, `<html lang="${lang}">`)
+    .replace(/<title>.*?<\/title>/, `<title>${escapedTitle}</title>`)
+    .replace(/<meta name="description" content="[^"]*" \/>/, `<meta name="description" content="${escapedDescription}" />`)
+    .replace(/<meta name="robots" content="[^"]*" \/>/, `<meta name="robots" content="${isNoindex ? "noindex, nofollow" : "index, follow"}" />`)
+    .replace(/<link rel="canonical" href="[^"]*" \/>/, `<link rel="canonical" href="${escapedCanonical}" />`)
+    .replace(/<link rel="alternate" hreflang="en" href="[^"]*" \/>/, `<link rel="alternate" hreflang="en" href="${htmlEscape(english)}" />`)
+    .replace(/<link rel="alternate" hreflang="ja" href="[^"]*" \/>/, `<link rel="alternate" hreflang="ja" href="${htmlEscape(japanese)}" />`)
+    .replace(/<meta property="og:url" content="[^"]*" \/>/, `<meta property="og:url" content="${escapedCanonical}" />`)
+    .replace(/<meta property="og:title" content="[^"]*" \/>/, `<meta property="og:title" content="${escapedTitle}" />`)
+    .replace(/<meta property="og:description" content="[^"]*" \/>/, `<meta property="og:description" content="${escapedDescription}" />`)
+    .replace(/<meta property="og:image" content="[^"]*" \/>/, `<meta property="og:image" content="${escapedImage}" />`)
+    .replace(/<meta property="twitter:url" content="[^"]*" \/>/, `<meta property="twitter:url" content="${escapedCanonical}" />`)
+    .replace(/<meta property="twitter:title" content="[^"]*" \/>/, `<meta property="twitter:title" content="${escapedTitle}" />`)
+    .replace(/<meta property="twitter:description" content="[^"]*" \/>/, `<meta property="twitter:description" content="${escapedDescription}" />`)
+    .replace(/<meta property="twitter:image" content="[^"]*" \/>/, `<meta property="twitter:image" content="${escapedImage}" />`);
+
+  return html;
+}
+
 async function startServer() {
-  app.use(cors());
+  app.set("trust proxy", true);
+
+  // 1. Security Headers (Helmet)
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "https:", "blob:"],
+        connectSrc: ["'self'", "https://*.googleapis.com", "https://*.firebaseio.com", "wss://*.firebaseio.com", "https://api.stripe.com", "https://securetoken.googleapis.com", "https://identitytoolkit.googleapis.com", "https://*.firebaseapp.com"],
+        frameSrc: ["'self'", "https://js.stripe.com", "https://hooks.stripe.com", "https://*.firebaseapp.com"],
+      }
+    }
+  }));
+
+  // 2. CORS Restrictions
+  const ALLOWED_ORIGINS = [
+    'https://app-gardenium.com',
+    'https://www.app-gardenium.com',
+    'https://app-gardenium-21754549540.asia-east1.run.app',
+    ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:3000', 'http://localhost:5173'] : [])
+  ];
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+  }));
+
+  // 3. Rate Limiting
+  const globalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200, message: "Too many requests, please try again later." });
+  app.use('/api', globalLimiter);
+
+  const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: "AI rate limit exceeded." });
+  app.use('/api/ai/', aiLimiter);
 
   // 1. Stripe Webhook (MUST BE BEFORE bodyParser.json())
   app.post(
@@ -70,6 +396,30 @@ async function startServer() {
 
   // 2. Standard Middleware
   app.use(bodyParser.json());
+
+  app.get("/sitemap.xml", async (req, res) => {
+    res.type("application/xml").send(await renderSitemapXml(getRequestSiteUrl(req)));
+  });
+
+  app.get("/robots.txt", (req, res) => {
+    res.type("text/plain").send(renderRobotsTxt(getRequestSiteUrl(req)));
+  });
+
+  app.get("/api/og/ideas/:ideaId.svg", async (req, res) => {
+    const idea = await fetchPublicIdeaForSeo(req.params.ideaId);
+    const title = idea?.title || "App idea growing on App Gardenium";
+    const description = idea?.oneLineSummary || "Plant tiny app ideas, get feedback, find early testers, and grow them into real products.";
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.type("image/svg+xml").send(renderOgSvg(title, description));
+  });
+
+  app.get("/api/og/ideas/:ideaId.png", async (req, res) => {
+    const idea = await fetchPublicIdeaForSeo(req.params.ideaId);
+    const title = idea?.title || "App idea growing on App Gardenium";
+    const description = idea?.oneLineSummary || "Plant tiny app ideas, get feedback, find early testers, and grow them into real products.";
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.type("image/png").send(await renderOgPng(title, description));
+  });
 
   // 3. Billing Endpoints
   app.post(
@@ -131,35 +481,40 @@ async function startServer() {
     "/api/user/membership-status",
     authenticate,
     async (req: AuthenticatedRequest, res) => {
-      const user = await ensureMonthlyTopUps(
-        req.uid!,
-        await ensureMonthlyUsage(req.uid!, req.user!)
-      );
+      try {
+        const user = await ensureMonthlyTopUps(
+          req.uid!,
+          await ensureMonthlyUsage(req.uid!, req.user!)
+        );
 
-      const limits = {
-        aiSummaries: user.plan === "pro" ? 50 : user.plan === "supporter" ? 10 : 0,
-        reports: user.plan === "pro" ? 10 : user.plan === "supporter" ? 1 : 0,
-      };
+        const limits = {
+          aiSummaries: user.plan === "pro" ? 50 : user.plan === "supporter" ? 10 : 3,
+          reports: user.plan === "pro" ? 10 : user.plan === "supporter" ? 1 : 0,
+        };
 
-      return res.json({
-        plan: user.plan,
-        status: user.planStatus,
-        currentPeriodEnd: user.currentPeriodEnd,
-        cancelAtPeriodEnd: user.cancelAtPeriodEnd,
-        usage: user.usage,
-        topUps: user.topUps || {},
-        limits,
-        remaining: {
-          aiSummaries: Math.max(
-            0,
-            limits.aiSummaries - (user.usage?.aiSummariesUsed || 0)
-          ),
-          reports:
-            Math.max(0, limits.reports - (user.usage?.reportsUsed || 0)) +
-            (user.topUps?.extraActivityReportsRemaining || 0),
-        },
-        portalEligible: !!user.stripeCustomerId,
-      });
+        return res.json({
+          plan: user.plan,
+          status: user.planStatus,
+          currentPeriodEnd: user.currentPeriodEnd,
+          cancelAtPeriodEnd: user.cancelAtPeriodEnd,
+          usage: user.usage,
+          topUps: user.topUps || {},
+          limits,
+          remaining: {
+            aiSummaries: Math.max(
+              0,
+              limits.aiSummaries - (user.usage?.aiSummariesUsed || 0)
+            ),
+            reports:
+              Math.max(0, limits.reports - (user.usage?.reportsUsed || 0)) +
+              (user.topUps?.extraActivityReportsRemaining || 0),
+          },
+          portalEligible: !!user.stripeCustomerId,
+        });
+      } catch (error: any) {
+        console.error("Membership status error:", error);
+        return res.status(500).json({ error: error.message || "Failed to load membership status" });
+      }
     }
   );
 
@@ -193,23 +548,9 @@ async function startServer() {
     authenticate,
     async (req: AuthenticatedRequest, res) => {
       try {
-        const user = await ensureMonthlyUsage(req.uid!, req.user!);
-
-        if (!hasFeatureAccess(user, ["supporter", "pro"])) {
-          return res
-            .status(403)
-            .json({ error: "Supporter plan required for AI Summaries" });
-        }
-
-        const { allowed, remaining } = await consumeUsage(
-          req.uid!,
-          user,
-          "aiSummaries"
-        );
-        if (!allowed) {
-          return res
-            .status(429)
-            .json({ error: "Monthly AI Summary limit reached" });
+        const quota = await consumeAiHelperQuota(req, res);
+        if (!quota) {
+          return;
         }
 
         const { text } = req.body;
@@ -228,7 +569,7 @@ async function startServer() {
         const summary =
           result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-        return res.json({ summary, remaining });
+        return res.json({ summary, remaining: quota.remaining });
       } catch (error: any) {
         return res.status(500).json({ error: error.message });
       }
@@ -241,6 +582,11 @@ async function startServer() {
     authenticate,
     async (req: AuthenticatedRequest, res) => {
       try {
+        const quota = await consumeAiHelperQuota(req, res);
+        if (!quota) {
+          return;
+        }
+
         const { title, oneLineSummary, targetUsers, problemDetails, frustrations, alternatives, minFeatures } = req.body;
         const genAI = getAIService();
 
@@ -275,7 +621,7 @@ async function startServer() {
         });
 
         const enhanced = JSON.parse(result.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
-        return res.json(enhanced);
+        return res.json({ ...enhanced, remaining: quota.remaining });
       } catch (error: any) {
         console.error("AI enhance error:", error);
         return res.status(500).json({ error: error.message || "Failed to enhance idea" });
@@ -288,6 +634,11 @@ async function startServer() {
     authenticate,
     async (req: AuthenticatedRequest, res) => {
       try {
+        const quota = await consumeAiHelperQuota(req, res);
+        if (!quota) {
+          return;
+        }
+
         const { targetLang, textData } = req.body;
         const ai = getAIService();
         
@@ -304,7 +655,7 @@ async function startServer() {
         });
 
         const translatedData = JSON.parse(response.text.trim());
-        return res.json(translatedData);
+        return res.json({ ...translatedData, remaining: quota.remaining });
       } catch (error: any) {
         console.error("Translation error:", error);
         return res.status(500).json({ error: error.message || "Failed to translate content" });
@@ -346,8 +697,9 @@ async function startServer() {
     authenticate,
     async (req: AuthenticatedRequest, res) => {
       try {
-        const { isPremium, activityData } = req.body;
+        const { isPremium, activityData, language } = req.body;
         const task = isPremium ? 'analysis_report_premium' : 'analysis_report';
+        const outputLanguage = language === 'en' ? 'English' : 'Japanese';
         
         const ai = getAIService();
         const prompt = `Act as an expert Product Manager. Analyze the following app community activity data and generate a structured JSON report.
@@ -355,6 +707,9 @@ async function startServer() {
         Data: ${JSON.stringify(activityData)}
         
         ${isPremium ? 'Provide a deep, strategic analysis with specific actionable advice, potential feature pivots, and a growth strategy.' : 'Provide a brief summary of the activity, highlighting 1-2 positive trends and 1 area for improvement.'}
+
+        Write every user-facing value in ${outputLanguage}. Keep product names and proper nouns as-is when appropriate.
+        If the data is sparse, still produce practical, gentle suggestions in ${outputLanguage}.
         
         Return the result as JSON matching this schema:
         {
@@ -394,6 +749,19 @@ async function startServer() {
         if (!payload || typeof payload !== "object") {
           return res.status(400).json({ error: "Invalid payload" });
         }
+        if (req.firebaseToken?.email_verified !== true) {
+          return res.status(403).json({ error: "Email verification is required" });
+        }
+        if (typeof payload.title !== "string" || payload.title.length < 1 || payload.title.length > 100) {
+          return res.status(400).json({ error: "Invalid title" });
+        }
+        if (
+          typeof payload.oneLineSummary !== "string" ||
+          payload.oneLineSummary.length < 1 ||
+          payload.oneLineSummary.length > 200
+        ) {
+          return res.status(400).json({ error: "Invalid one-line summary" });
+        }
 
         const safeDoc = {
           ...payload,
@@ -424,34 +792,42 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    const indexPath = path.join(distPath, "index.html");
+    app.use(express.static(distPath, { index: false }));
+    app.get("*", async (req, res) => {
+      try {
+        res.type("html").send(await renderIndexWithSeo(indexPath, req.path, getRequestSiteUrl(req)));
+      } catch (error) {
+        console.error("SEO HTML render error:", error);
+        res.sendFile(indexPath);
+      }
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
-    // Log safe config
-    try {
-      const config = loadFirebaseConfig();
-      console.log("Firebase Config:", {
-        projectId: config.projectId,
-        authDomain: config.authDomain,
-        databaseId: config.firestoreDatabaseId && config.firestoreDatabaseId !== "(default)" 
-          ? config.firestoreDatabaseId 
-          : "(default)",
-      });
-    } catch (e) {
-      console.log("Firebase Config: Not available or invalid format.");
-    }
+    if (process.env.NODE_ENV !== "production") {
+      // Log safe config
+      try {
+        const config = loadFirebaseConfig();
+        console.log("Firebase Config:", {
+          projectId: config.projectId,
+          authDomain: config.authDomain,
+          databaseId: config.firestoreDatabaseId && config.firestoreDatabaseId !== "(default)" 
+            ? config.firestoreDatabaseId 
+            : "(default)",
+        });
+      } catch (e) {
+        console.log("Firebase Config: Not available or invalid format.");
+      }
 
-    console.log(
-      stripe
-        ? "Stripe initialized"
-        : "Stripe not configured; billing endpoints will return 500 until STRIPE_SECRET_KEY is set"
-    );
+      console.log(
+        stripe
+          ? "Stripe initialized"
+          : "Stripe not configured; billing endpoints will return 500 until STRIPE_SECRET_KEY is set"
+      );
+    }
   });
 }
 

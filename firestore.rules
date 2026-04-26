@@ -23,6 +23,12 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     function isValidId(id) {
       return id is string
         && id.size() <= 128
@@ -70,24 +76,8 @@ service cloud.firestore {
       return v in ['seed', 'sprout', 'growing', 'testing', 'launching', 'released', 'archived'];
     }
 
-    function isValidReleaseStatus(v) {
-      return v in ['none', 'planned', 'beta', 'released', 'paused'];
-    }
-
     function isValidProjectStage(v) {
       return !(v is string) || v in ['idea', 'prototype', 'beta', 'in_dev'];
-    }
-
-    function isOptionalString(field, maxLen) {
-      return !(field in incomingData()) ||
-        incomingData()[field] == null ||
-        (incomingData()[field] is string && incomingData()[field].size() <= maxLen);
-    }
-
-    function isOptionalTimestamp(field) {
-      return !(field in incomingData()) ||
-        incomingData()[field] == null ||
-        incomingData()[field] is timestamp;
     }
 
     // -------------------------------------------------------------------------
@@ -109,13 +99,15 @@ service cloud.firestore {
           'name',
           'avatarUrl',
           'bio',
+          'skills',
           'socialLinks',
           'aiTicketBalance',
           'updatedAt'
         ]) &&
         (!('name' in incomingData()) || (incomingData().name is string && incomingData().name.size() <= 120)) &&
-        (!('avatarUrl' in incomingData()) || (incomingData().avatarUrl is string && incomingData().avatarUrl.size() <= 1000)) &&
+        (!('avatarUrl' in incomingData()) || (incomingData().avatarUrl is string && incomingData().avatarUrl.size() <= 250000)) &&
         (!('bio' in incomingData()) || (incomingData().bio is string && incomingData().bio.size() <= 1000)) &&
+        (!('skills' in incomingData()) || (incomingData().skills is list && incomingData().skills.size() <= 20)) &&
         (!('plan' in incomingData()) || incomingData().plan in ['free', 'supporter', 'pro']) &&
         (!('aiTicketBalance' in incomingData()) || incomingData().aiTicketBalance is number);
     }
@@ -123,34 +115,34 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     // Salon / Greenhouse
     // -------------------------------------------------------------------------
-    function getUserPlan(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.plan;
-    }
-
-    function isSupporterPlus() {
-      return isSignedIn() && getUserPlan(request.auth.uid) in ['supporter', 'pro'];
-    }
-
-    function isProMember() {
-      return isSignedIn() && getUserPlan(request.auth.uid) == 'pro';
+    function isBetaGreenhouseMember() {
+      return isSignedIn();
     }
 
     match /salonPosts/{postId} {
-      allow read: if isSupporterPlus();
+      allow read: if isBetaGreenhouseMember();
       
-      allow create: if isProMember() &&
+      allow create: if isBetaGreenhouseMember() &&
         incomingData().authorId == request.auth.uid &&
-        incomingData().authorPlan == 'pro' &&
+        incomingData().authorPlan in ['free', 'supporter', 'pro'] &&
         incomingData().boostState == 'none' &&
         incomingData().cheerCount == 0 &&
         incomingData().commentCount == 0 &&
-        incomingData().createdAt is timestamp;
+        incomingData().createdAt is timestamp &&
+        incomingData().title is string &&
+        incomingData().title.size() > 0 &&
+        incomingData().title.size() <= 120 &&
+        incomingData().body is string &&
+        incomingData().body.size() > 0 &&
+        incomingData().body.size() <= 2000;
 
       allow update: if (isOwner(existingData().authorId) && 
         incomingData().authorId == existingData().authorId &&
         incomingData().createdAt == existingData().createdAt &&
         incomingData().diff(existingData()).affectedKeys().hasOnly(['boostState', 'updatedAt', 'title', 'body', 'screenshotUrl']) &&
-        (!('boostState' in incomingData()) || incomingData().boostState in ['none', 'applied'])
+        (!('boostState' in incomingData()) || incomingData().boostState in ['none', 'applied']) &&
+        (!('title' in incomingData()) || (incomingData().title is string && incomingData().title.size() > 0 && incomingData().title.size() <= 120)) &&
+        (!('body' in incomingData()) || (incomingData().body is string && incomingData().body.size() > 0 && incomingData().body.size() <= 2000))
       ) || (
         isSignedIn() &&
         incomingData().diff(existingData()).affectedKeys().hasOnly(['cheerCount', 'commentCount'])
@@ -160,17 +152,21 @@ service cloud.firestore {
     }
 
     match /salonComments/{commentId} {
-      allow read: if isSupporterPlus();
-      allow create: if isSupporterPlus() &&
+      allow read: if isBetaGreenhouseMember();
+      allow create: if isBetaGreenhouseMember() &&
         incomingData().authorId == request.auth.uid &&
-        incomingData().createdAt is timestamp;
+        incomingData().createdAt is timestamp &&
+        incomingData().body is string &&
+        incomingData().body.size() > 0 &&
+        incomingData().body.size() <= 1000 &&
+        incomingData().authorPlan in ['free', 'supporter', 'pro'];
       allow delete: if isOwner(existingData().authorId);
     }
 
     match /salonReactions/{reactionId} {
       // reactionId = {postId}_{userId}
-      allow read: if isSupporterPlus();
-      allow create, delete: if isSupporterPlus() &&
+      allow read: if isBetaGreenhouseMember();
+      allow create, delete: if isBetaGreenhouseMember() &&
         reactionId == incomingData().postId + '_' + request.auth.uid &&
         incomingData().userId == request.auth.uid;
     }
@@ -287,6 +283,25 @@ service cloud.firestore {
           'screenshots',
           'updatedAt'
         ])) || (
+          // Allow admins to hide/review public UGC without changing authorship.
+          isAdmin() &&
+          incomingData().authorId == existingData().authorId &&
+          incomingData().createdAt == existingData().createdAt &&
+          incomingData().diff(existingData()).affectedKeys().hasOnly([
+            'visibility',
+            'moderationState',
+            'moderationReason',
+            'moderatedAt',
+            'moderatedBy',
+            'updatedAt'
+          ]) &&
+          incomingData().visibility in ['public', 'unlisted', 'private'] &&
+          (!('moderationState' in incomingData()) || incomingData().moderationState in ['visible', 'hidden', 'reviewed']) &&
+          (!('moderationReason' in incomingData()) || incomingData().moderationReason is string) &&
+          (!('moderatedBy' in incomingData()) || incomingData().moderatedBy == request.auth.uid) &&
+          (!('moderatedAt' in incomingData()) || incomingData().moderatedAt is timestamp) &&
+          (!('updatedAt' in incomingData()) || incomingData().updatedAt is timestamp)
+        ) || (
           // Allow anyone to increment testerCount
           isSignedIn() &&
           incomingData().diff(existingData()).affectedKeys().hasOnly(['testerCount', 'updatedAt']) &&
@@ -306,7 +321,7 @@ service cloud.firestore {
           incomingData().commentCount == existingData().commentCount + 1
         );
 
-      allow delete: if isOwner(resource.data.authorId);
+      allow delete: if isOwner(resource.data.authorId) || isAdmin();
 
       // -------------------------------------------------------------------------
       // Comments (Nested)
@@ -467,6 +482,21 @@ service cloud.firestore {
       allow update: if isOwner(resource.data.userId) &&
         incomingData().diff(existingData()).affectedKeys().hasOnly(['read']);
       allow delete: if isOwner(resource.data.userId);
+    }
+
+    match /contentReports/{reportId} {
+      allow create: if isSignedIn() &&
+        incomingData().reporterId == request.auth.uid &&
+        incomingData().targetType in ['idea', 'comment', 'profile', 'salonPost'] &&
+        incomingData().targetId is string &&
+        incomingData().targetId.size() > 0 &&
+        incomingData().targetId.size() <= 128 &&
+        incomingData().reason in ['spam', 'abuse', 'illegal', 'off_topic', 'other'] &&
+        incomingData().status == 'open' &&
+        incomingData().createdAt is timestamp &&
+        (!('details' in incomingData()) || (incomingData().details is string && incomingData().details.size() <= 1000));
+
+      allow read, list, update, delete: if isAdmin();
     }
 
     match /shippedApps/{appId} {

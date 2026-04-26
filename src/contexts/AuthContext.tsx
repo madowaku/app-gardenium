@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User as FirebaseUser, onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { User as AppUser } from '../types/appSproutTypes';
 
 interface AuthContextType {
@@ -24,7 +24,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let unsubscribeUserDoc: (() => void) | null = null;
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      unsubscribeUserDoc?.();
+      unsubscribeUserDoc = null;
       setCurrentUser(user);
       
       if (user) {
@@ -38,13 +42,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Fetch or create app user profile
         try {
           const userRef = doc(db, 'users', user.uid);
-          const docSnap = await getDoc(userRef);
-          
-          if (docSnap.exists()) {
-            setAppUser(docSnap.data() as AppUser);
-          } else {
-            // Create user document
-            const newAppUser: any = {
+          const fallbackUser: AppUser = {
+            id: user.uid,
+            name: user.displayName || 'Sprout User',
+            avatarUrl: user.photoURL || '',
+            bio: '',
+            role: 'user',
+            plan: 'free',
+            createdAt: Date.now(),
+          };
+
+          unsubscribeUserDoc = onSnapshot(userRef, async (docSnap) => {
+            if (docSnap.exists()) {
+              setAppUser({ id: user.uid, ...docSnap.data() } as AppUser);
+              return;
+            }
+
+            const newAppUser = {
               id: user.uid,
               name: (user.displayName || 'Sprout User').substring(0, 120),
               avatarUrl: user.photoURL || '',
@@ -54,13 +68,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               createdAt: serverTimestamp(),
             };
             await setDoc(userRef, newAppUser);
-            
-            // Re-fetch to get actual timestamp if needed, or just set locally
-            setAppUser({
-              ...newAppUser,
-              createdAt: Date.now()
-            } as AppUser);
-          }
+            setAppUser(fallbackUser);
+          }, (error) => {
+            const isOfflineError = error.message?.includes('client is offline');
+            if (!isOfflineError) {
+              console.warn("Error subscribing to user profile:", error);
+            }
+            setAppUser(fallbackUser);
+          });
         } catch (error) {
           const isOfflineError = (error as any)?.message?.includes('client is offline');
           if (!isOfflineError) {
@@ -83,7 +98,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeUserDoc?.();
+      unsubscribe();
+    };
   }, []);
 
   return (

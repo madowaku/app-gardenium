@@ -30,6 +30,7 @@ export interface Purchase extends BaseEntity {
 export interface AiReport extends BaseEntity {
   postId: string;
   userId: string;
+  language?: 'en' | 'ja';
   summary: string;
   commonRequests: string[];
   concerns: string[];

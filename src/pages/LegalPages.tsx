@@ -39,11 +39,12 @@ const LegalLayout: React.FC<{ title: string; lastUpdated: string; children: Reac
               <p className="text-sm text-slate-500">規約およびポリシーに関するご質問はこちらまで / For questions regarding these Terms or the Policy, please contact us here.</p>
             </div>
             <a 
-              href="mailto:raindrum909@gmail.com" 
+              href="https://forms.gle/FHZoVf1ez5WHbqZb7"
+              target="_blank" rel="noopener noreferrer"
               className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-2xl text-slate-700 font-bold hover:bg-emerald-50 hover:border-emerald-200 transition-all shadow-sm active:scale-95"
             >
               <Mail size={18} className="text-emerald-500" />
-              raindrum909@gmail.com
+              お問い合わせフォーム / Contact Form
             </a>
           </div>
         </footer>
@@ -460,7 +461,7 @@ export const TermsPage: React.FC = () => {
       </p>
       <p>
         開発者 / Developer: madowaku<br />
-        メールアドレス / Email: raindrum909@gmail.com
+        お問い合わせ / Contact: <a href="https://forms.gle/FHZoVf1ez5WHbqZb7" target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">お問い合わせフォーム / Contact Form</a>
       </p>
     </LegalLayout>
   );
@@ -717,7 +718,7 @@ export const PrivacyPage: React.FC = () => {
       </p>
       <p>
         開発者 / Developer: madowaku<br />
-        メールアドレス / Email: raindrum909@gmail.com
+        お問い合わせ / Contact: <a href="https://forms.gle/FHZoVf1ez5WHbqZb7" target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">お問い合わせフォーム / Contact Form</a>
       </p>
     </LegalLayout>
   );

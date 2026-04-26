@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Leaf } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { PageType } from '../App';
 import { auth } from '../lib/firebase';
-import firebaseConfig from '../../firebase-applet-config.json';
 import {
   GoogleAuthProvider,
   browserLocalPersistence,
@@ -22,11 +21,6 @@ export default function Login({ navigate }: LoginProps) {
   const [error, setError] = useState('');
   const { t, language } = useLanguage();
   const { currentUser } = useAuth();
-
-  const authHandlerUrl = useMemo(() => {
-    const authDomain = firebaseConfig.authDomain || `${firebaseConfig.projectId}.firebaseapp.com`;
-    return `https://${authDomain}/__/auth/handler`;
-  }, []);
 
   const getLoginErrorMessage = (errorCode: string) => {
     switch (errorCode) {
@@ -48,10 +42,9 @@ export default function Login({ navigate }: LoginProps) {
         return t('login.error.network');
       case 'auth/invalid-continue-uri':
       case 'auth/unauthorized-continue-uri':
-        const authHandlerUrl = `${window.location.origin}/__/auth/handler`;
         return language === 'ja'
-          ? `ログイン設定エラー。Firebase AuthenticationのAuthorized domainsに「localhost」を追加し、Google CloudのOAuth同意画面で「${authHandlerUrl}」をリダイレクトURIとして登録してください。`
-          : `Login configuration error. Add "localhost" to Firebase Authentication Authorized domains and register "${authHandlerUrl}" as a Google Cloud OAuth redirect URI.`;
+          ? 'Firebase Console / Google Cloud Console の承認済みURL設定を確認してください。'
+          : 'Please verify approved URL settings in Firebase Console / Google Cloud Console.';
       default:
         return t('login.error.generic');
     }

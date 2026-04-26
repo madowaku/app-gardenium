@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { salonService } from '../lib/salonService';
+import { MAX_SALON_COMMENT_LENGTH, salonService } from '../lib/salonService';
 import { PostRecord, SalonComment, UserPlan } from '../types/appSproutTypes';
 import { Heart, MessageSquare, Sun, CheckCircle2, Wind, MoreVertical, Edit2, Trash2, AlertCircle, Loader2, Sprout } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -42,7 +42,7 @@ export const SalonPostCard: React.FC<SalonPostCardProps> = ({ post, userPlan, on
   }, [post.id, isCommentOpen]);
 
   const handleCheer = async () => {
-    if (userPlan === 'free' || !currentUser) return;
+    if (!currentUser) return;
     try {
       const active = await salonService.toggleCheer(post.id, currentUser.uid);
       setHasCheered(active);
@@ -63,14 +63,14 @@ export const SalonPostCard: React.FC<SalonPostCardProps> = ({ post, userPlan, on
   };
 
   const handleSubmitComment = async () => {
-    if (!commentText.trim() || userPlan === 'free' || !currentUser) return;
+    if (!commentText.trim() || !currentUser) return;
     
     try {
       await salonService.addComment(post.id, {
         authorId: currentUser.uid,
         authorName: appUser?.name || t('salon.postMine'),
-        authorPlan: userPlan as 'supporter' | 'pro',
-        body: commentText,
+        authorPlan: userPlan,
+        body: commentText.trim().slice(0, MAX_SALON_COMMENT_LENGTH),
       });
       setCommentText('');
     } catch (error) {
@@ -196,7 +196,7 @@ export const SalonPostCard: React.FC<SalonPostCardProps> = ({ post, userPlan, on
       <div className="flex items-center gap-4 pt-4 border-t border-slate-50 mt-auto">
         <button 
           onClick={handleCheer}
-          disabled={userPlan === 'free'}
+          disabled={!currentUser}
           className={`flex items-center gap-1.5 text-xs font-bold transition-colors disabled:opacity-50 ${hasCheered ? 'text-emerald-500' : 'text-slate-400 hover:text-emerald-500'}`}
         >
           <Heart size={16} className={hasCheered ? "fill-emerald-500" : ""} />
@@ -225,7 +225,7 @@ export const SalonPostCard: React.FC<SalonPostCardProps> = ({ post, userPlan, on
             {t('salon.boostApplied')}
           </div>
         )}
-        {post.isMine && (!post.boostState || post.boostState === 'none') && !isRecentlyPublished && post.publishState === 'published' && (
+        {post.isMine && userPlan === 'pro' && (!post.boostState || post.boostState === 'none') && !isRecentlyPublished && post.publishState === 'published' && (
           <button 
             onClick={handleApplyBoost}
             className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-amber-500 transition-colors uppercase tracking-widest"
@@ -263,7 +263,7 @@ export const SalonPostCard: React.FC<SalonPostCardProps> = ({ post, userPlan, on
               ))}
               
               {/* Add comment field */}
-              {userPlan !== 'free' && (
+              {currentUser && (
                 <div className="flex gap-3 pt-2">
                   <div className="w-6 h-6 rounded-full bg-emerald-100 shrink-0 border border-emerald-200/50"></div>
                   <div className="flex-1 flex items-center gap-2">
@@ -271,7 +271,8 @@ export const SalonPostCard: React.FC<SalonPostCardProps> = ({ post, userPlan, on
                        type="text" 
                        value={commentText}
                        onChange={(e) => setCommentText(e.target.value)}
-                       onKeyDown={(e) => e.key === 'Enter' && handleSubmitComment()}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSubmitComment()}
+                       maxLength={MAX_SALON_COMMENT_LENGTH}
                        placeholder={t('salon.writeComment')}
                        className="w-full text-xs text-slate-800 bg-slate-50 border border-slate-100 rounded-full px-4 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-200 transition-shadow"
                      />

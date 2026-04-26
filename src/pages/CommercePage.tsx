@@ -94,14 +94,15 @@ export default function CommercePage() {
 
           <section>
             <h2 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-2 border-b border-slate-50 pb-1">
-              メールアドレス / Contact
+              お問い合わせ / Contact
             </h2>
             <p>
               <a 
-                href="mailto:raindrum909@gmail.com" 
+                href="https://forms.gle/FHZoVf1ez5WHbqZb7"
+                target="_blank" rel="noopener noreferrer"
                 className="text-slate-400 underline hover:text-slate-600 transition-colors"
               >
-                raindrum909@gmail.com
+                お問い合わせフォーム / Contact Form
               </a>
             </p>
           </section>

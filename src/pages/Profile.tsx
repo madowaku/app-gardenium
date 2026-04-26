@@ -18,7 +18,7 @@ interface ProfileProps {
 
 export default function Profile({ navigate }: ProfileProps) {
   const { t, language } = useLanguage();
-  const { currentUser } = useAuth();
+  const { currentUser, appUser } = useAuth();
   const [myIdeas, setMyIdeas] = useState<PopulatedIdea[]>([]);
   const [supportedIdeas, setSupportedIdeas] = useState<PopulatedIdea[]>([]);
   const [shippedApps, setShippedApps] = useState<ShippedApp[]>([]);
@@ -45,13 +45,14 @@ export default function Profile({ navigate }: ProfileProps) {
   const [editWebsite, setEditWebsite] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const [moderationError, setModerationError] = useState<string | null>(null);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
 
   // App User state fetched from Firestore
   const [profileData, setProfileData] = useState<{ 
-    displayName: string; 
+    name: string;
     bio: string; 
     skills: string[]; 
-    photoURL?: string;
+    avatarUrl?: string;
     plan?: string;
     socialLinks?: {
       twitter?: string;
@@ -124,14 +125,17 @@ export default function Profile({ navigate }: ProfileProps) {
             return;
           }
 
-          // 3. Save to Firestore
+          // 3. Save to Firestore. Auth photoURL is not a good place for base64 avatars,
+          // so App Gardenium uses the user profile document as the source of truth.
           const userRef = doc(db, 'users', currentUser.uid);
-          await updateDoc(userRef, { photoURL: base64Image });
-          await updateProfile(currentUser, { photoURL: base64Image }); // Update Auth Profile so it reflects immediately correctly
+          await updateDoc(userRef, {
+            avatarUrl: base64Image,
+            updatedAt: serverTimestamp()
+          });
           
           setProfileData(prev => ({
             ...prev,
-            photoURL: base64Image
+            avatarUrl: base64Image
           } as any));
           setSavingProfile(false);
         };
@@ -140,12 +144,15 @@ export default function Profile({ navigate }: ProfileProps) {
       reader.readAsDataURL(file);
     } catch (err) {
       console.error('Avatar update failed:', err);
+      setModerationError(language === 'ja' ? 'アバター画像を更新できませんでした。画像サイズを小さくして再度お試しください。' : 'Could not update your avatar. Please try a smaller image.');
       setSavingProfile(false);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleEditOpen = () => {
-    setEditName(profileData?.displayName || currentUser?.displayName || '');
+    setEditName(profileData?.name || appUser?.name || currentUser?.displayName || '');
     setEditBio(profileData?.bio || '');
     setEditSkills(profileData?.skills?.join(', ') || '');
     setEditTwitter(profileData?.socialLinks?.twitter || '');
@@ -157,12 +164,13 @@ export default function Profile({ navigate }: ProfileProps) {
   const handleSaveProfile = async () => {
     if (!currentUser) return;
     setSavingProfile(true);
+    setProfileSaveError(null);
     try {
       const userRef = doc(db, 'users', currentUser.uid);
       const skillsArray = editSkills.split(',').map(s => s.trim()).filter(Boolean);
       
       const updates = {
-        displayName: editName,
+        name: editName.trim() || t('common.you'),
         bio: editBio,
         skills: skillsArray,
         socialLinks: {
@@ -172,8 +180,11 @@ export default function Profile({ navigate }: ProfileProps) {
         }
       };
       
-      await updateDoc(userRef, updates);
-      await updateProfile(currentUser, { displayName: editName });
+      await updateDoc(userRef, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      await updateProfile(currentUser, { displayName: updates.name });
       
       setProfileData(prev => ({
         ...prev,
@@ -182,7 +193,7 @@ export default function Profile({ navigate }: ProfileProps) {
       setIsEditing(false);
     } catch (err) {
       console.error('Error saving profile:', err);
-      // Optional: Add some error state here
+      setProfileSaveError(language === 'ja' ? 'プロフィールを保存できませんでした。入力内容を確認してもう一度お試しください。' : 'Could not save your profile. Please check your inputs and try again.');
     } finally {
       setSavingProfile(false);
     }
@@ -223,10 +234,10 @@ export default function Profile({ navigate }: ProfileProps) {
         // Fetch User Profile first
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userSnap = await getDoc(userDocRef);
-        let userName = currentUser.displayName || t('common.you');
+        let userName = appUser?.name || currentUser.displayName || t('common.you');
         if (userSnap.exists()) {
           setProfileData(userSnap.data() as any);
-          if (userSnap.data().displayName) userName = userSnap.data().displayName;
+          if (userSnap.data().name) userName = userSnap.data().name;
         }
 
         // Fetch ideas
@@ -289,7 +300,7 @@ export default function Profile({ navigate }: ProfileProps) {
     };
 
     fetchMyIdeasAndProfile();
-  }, [currentUser, navigate]);
+  }, [appUser?.name, currentUser, navigate]);
 
   const handleAddShippedApp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,9 +324,10 @@ export default function Profile({ navigate }: ProfileProps) {
 
   if (!currentUser) return null;
 
-  const displayName = profileData?.displayName || currentUser.displayName || t('nav.profile');
+  const displayName = profileData?.name || appUser?.name || currentUser.displayName || t('nav.profile');
   const bio = profileData?.bio || '';
   const skills = profileData?.skills || [];
+  const avatarUrl = profileData?.avatarUrl || appUser?.avatarUrl || currentUser.photoURL || '';
 
   return (
     <div className="max-w-5xl mx-auto pb-16">
@@ -323,8 +335,8 @@ export default function Profile({ navigate }: ProfileProps) {
       {/* Profile Header */}
       <div className="bg-bg-card rounded-[32px] p-8 md:p-14 shadow-sm border border-border-color mb-10 flex flex-col md:flex-row items-center md:items-start gap-8 relative">
         <div className="relative shrink-0 group">
-          {profileData?.photoURL || currentUser.photoURL ? (
-            <img src={profileData?.photoURL || currentUser.photoURL || ''} alt="Profile" className="w-32 h-32 rounded-full border border-sakura shadow-sm object-cover" />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="Profile" className="w-32 h-32 rounded-full border border-sakura shadow-sm object-cover" />
           ) : (
             <div className="w-32 h-32 rounded-full bg-primary-light flex items-center justify-center text-4xl font-serif text-primary border border-sakura shadow-sm uppercase">
               {displayName[0] || 'M'}
@@ -362,6 +374,12 @@ export default function Profile({ navigate }: ProfileProps) {
                 <button onClick={() => setIsEditing(false)} className="text-text-muted hover:bg-gray-100 p-1 rounded-full"><X size={18} /></button>
               </div>
               <div className="space-y-4">
+                {profileSaveError && (
+                  <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-2xl flex items-center gap-2 text-sm">
+                    <AlertCircle size={18} />
+                    {profileSaveError}
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-text-muted mb-1 uppercase tracking-wider">{t('profile.displayName')}</label>
                   <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full border border-border-color rounded-xl px-4 py-2 focus:outline-none focus:border-primary" />

@@ -23,18 +23,19 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Link, useNavigate } from 'react-router-dom';
+import { localizePath } from '../lib/i18nRoutes';
 
 // types
 import { Plan, PostRecord, SalonPost } from '../types/appSproutTypes';
 
 import { useAuth } from '../contexts/AuthContext';
-import { salonService } from '../lib/salonService';
+import { MAX_SALON_POST_BODY_LENGTH, salonService } from '../lib/salonService';
 import { SalonPostCard } from './SalonPostCard';
 
 import { userService } from '../services/userService';
 
 const SalonPage: React.FC = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { appUser, currentUser } = useAuth();
   
   // Internal state for posts and UI
@@ -42,8 +43,8 @@ const SalonPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [recentlyPublishedId, setRecentlyPublishedId] = useState<string | null>(null);
   
-  // Plan resolution: use appUser.plan or fallback to 'free'
   const userPlan = appUser?.plan || 'free';
+  const isLoggedIn = !!currentUser;
 
   const handlePlanSwitch = async (plan: Plan) => {
     if (!currentUser) return;
@@ -57,7 +58,7 @@ const SalonPage: React.FC = () => {
   
   // Real-time subscription
   useEffect(() => {
-    if (userPlan === 'free') {
+    if (!isLoggedIn) {
       setLoading(false);
       return;
     }
@@ -76,7 +77,7 @@ const SalonPage: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [userPlan, currentUser?.uid]);
+  }, [currentUser?.uid, isLoggedIn]);
 
   // Composer state
   const [postMode, setPostMode] = useState<'progress' | 'question'>('progress');
@@ -85,7 +86,7 @@ const SalonPage: React.FC = () => {
   const [postBody, setPostBody] = useState('');
   
   const handlePublish = async () => {
-    if (!postBody.trim() || !currentUser || userPlan !== 'pro') return;
+    if (!postBody.trim() || !currentUser) return;
     
     setIsPublishing(true);
     setPublishError(false);
@@ -94,10 +95,10 @@ const SalonPage: React.FC = () => {
       const newPostId = await salonService.createPost({
         authorId: currentUser.uid,
         authorName: appUser?.name || 'Someone',
-        authorPlan: 'pro',
+        authorPlan: userPlan,
         type: postMode,
         title: postMode === 'progress' ? t('salon.modeToggle.progress') : t('salon.modeToggle.question'),
-        body: postBody,
+        body: postBody.trim().slice(0, MAX_SALON_POST_BODY_LENGTH),
       });
       
       setPostBody('');
@@ -128,6 +129,7 @@ const SalonPage: React.FC = () => {
   return (
     <div className="bg-[#FCFDFB] min-h-screen font-sans text-slate-800 pb-24">
       {/* Test Toggle (Dev Only) */}
+      {process.env.NODE_ENV !== 'production' && currentUser && (
       <div className="fixed bottom-6 right-6 z-50 bg-white p-2 rounded-2xl shadow-xl border border-slate-100 flex gap-2">
         <button 
           onClick={() => handlePlanSwitch('free')}
@@ -148,6 +150,7 @@ const SalonPage: React.FC = () => {
           {t('salon.testPro')}
         </button>
       </div>
+      )}
 
       {/* 1. Hero Section */}
       <section className="relative pt-24 pb-16 px-6 overflow-hidden">
@@ -189,7 +192,7 @@ const SalonPage: React.FC = () => {
       </section>
 
       <div className="max-w-6xl mx-auto px-6 py-12">
-        {userPlan === 'free' ? (
+        {!isLoggedIn ? (
           <div className="max-w-3xl mx-auto mt-8">
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -211,7 +214,7 @@ const SalonPage: React.FC = () => {
               </div>
               
               <div>
-                <Link to="/pricing" className="inline-block px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold shadow-xl shadow-emerald-600/20 transition-all hover:-translate-y-1 relative z-10">
+                <Link to={localizePath('/login', language)} className="inline-block px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold shadow-xl shadow-emerald-600/20 transition-all hover:-translate-y-1 relative z-10">
                   {t('salon.freeGateBtn')}
                 </Link>
               </div>
@@ -229,7 +232,7 @@ const SalonPage: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
             >
               <AnimatePresence mode="wait">
-                {userPlan === 'pro' ? (
+                {isLoggedIn ? (
                   <motion.div 
                     key="pro-post"
                     initial={{ opacity: 0 }}
@@ -261,11 +264,15 @@ const SalonPage: React.FC = () => {
                           value={postBody}
                           onChange={(e) => setPostBody(e.target.value)}
                           disabled={isPublishing}
+                          maxLength={MAX_SALON_POST_BODY_LENGTH}
                           placeholder={postMode === 'progress' ? t('salon.postIdea') : 'What are you stuck on?'}
                           className="w-full bg-slate-50/50 rounded-2xl p-4 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-100 resize-none min-h-[100px] border border-slate-100 disabled:opacity-50"
                         ></textarea>
                         
                         <div className="flex items-center justify-between mt-4">
+                          <span className="text-[11px] font-medium text-slate-400">
+                            {postBody.trim().length}/{MAX_SALON_POST_BODY_LENGTH}
+                          </span>
                           <div className="flex items-center gap-2 text-slate-400">
                             <button disabled={isPublishing} className="p-2 hover:bg-slate-50 rounded-xl transition-colors disabled:opacity-50"><ImageIcon size={18} /></button>
                           </div>
@@ -296,7 +303,7 @@ const SalonPage: React.FC = () => {
                   </motion.div>
                 ) : (
                   <motion.div 
-                    key="supporter-prompt"
+                    key="beta-prompt"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -313,9 +320,6 @@ const SalonPage: React.FC = () => {
                       <p className="text-sm text-slate-600 leading-relaxed font-medium mb-4">
                         {t('salon.upgradePromptDesc')}
                       </p>
-                      <button className="px-5 py-2.5 bg-white border border-emerald-100 text-emerald-700 hover:bg-emerald-50 rounded-xl text-xs font-bold transition-colors inline-block">
-                        {t('salon.upgradeBtn')}
-                      </button>
                     </div>
                   </motion.div>
                 )}

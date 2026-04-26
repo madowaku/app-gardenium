@@ -10,6 +10,37 @@ const stripe = stripeSecretKey
     })
   : null;
 
+function normalizeUrl(value?: string | null) {
+  return value?.trim().replace(/\/$/, "") || "";
+}
+
+function getAppBaseUrl() {
+  return (
+    normalizeUrl(process.env.APP_URL) ||
+    normalizeUrl(process.env.PUBLIC_SITE_URL) ||
+    "http://localhost:3000"
+  );
+}
+
+function resolveHostedUrl(envValue: string | undefined, fallbackPath: string) {
+  const raw = envValue?.trim();
+  const appBaseUrl = getAppBaseUrl();
+
+  if (!raw) {
+    return `${appBaseUrl}${fallbackPath}`;
+  }
+
+  try {
+    const parsed = new URL(raw);
+    if (process.env.NODE_ENV === "production" && ["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+      return `${appBaseUrl}${fallbackPath}`;
+    }
+    return parsed.toString();
+  } catch {
+    return `${appBaseUrl}${fallbackPath}`;
+  }
+}
+
 function getNow() {
   return Date.now();
 }
@@ -242,8 +273,8 @@ export async function createCheckoutSession(uid: string, user: User, productKey:
     payment_method_types: ["card"],
     line_items: [{ price: priceId, quantity: 1 }],
     metadata: { uid, productKey },
-    success_url: process.env.STRIPE_SUCCESS_URL!,
-    cancel_url: process.env.STRIPE_CANCEL_URL!,
+    success_url: resolveHostedUrl(process.env.STRIPE_SUCCESS_URL, "/membership?checkout=success"),
+    cancel_url: resolveHostedUrl(process.env.STRIPE_CANCEL_URL, "/pricing?checkout=cancel"),
   });
 
   return session.url;
@@ -257,7 +288,7 @@ export async function createPortalSession(customerId: string) {
 
   const session = await stripeClient.billingPortal.sessions.create({
     customer: customerId,
-    return_url: process.env.STRIPE_PORTAL_RETURN_URL!,
+    return_url: resolveHostedUrl(process.env.STRIPE_PORTAL_RETURN_URL, "/membership"),
   });
 
   return session.url;

@@ -22,6 +22,20 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    oneLineSummary: '',
+    targetUsers: '',
+    problemDetails: '',
+    alternatives: '',
+    frustrations: '',
+    minFeatures: '',
+    tags: '',
+    isSapling: false,
+    demoUrl: '',
+    currentStatus: 'Mockup',
+    lookingFor: [] as string[]
+  });
 
   // Redirect to login if not authenticated
   if (!currentUser) {
@@ -47,26 +61,12 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
       </div>
     );
   }
-  const isRetryableSubmitError = (code: unknown) => {
-    if (typeof code !== 'string') return false;
-    const retryable = ['unavailable', 'deadline-exceeded', 'failed-precondition'];
-    return retryable.some(err => code === err || code.endsWith(`/${err}`));
-  };
 
-  const [formData, setFormData] = useState({
-    title: '',
-    oneLineSummary: '',
-    targetUsers: '',
-    problemDetails: '',
-    alternatives: '',
-    frustrations: '',
-    minFeatures: '',
-    tags: '',
-    isSapling: false,
-    demoUrl: '',
-    currentStatus: 'Mockup',
-    lookingFor: [] as string[]
-  });
+  const shouldUseServerSubmitFallback = (code: unknown) => {
+    if (typeof code !== 'string') return false;
+    const fallbackCodes = ['unavailable', 'deadline-exceeded', 'failed-precondition', 'permission-denied'];
+    return fallbackCodes.some(err => code === err || code.endsWith(`/${err}`));
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({
@@ -145,7 +145,8 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
       });
 
       if (!response.ok) {
-        throw new Error('AI enhancement request failed');
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error || 'AI enhancement request failed');
       }
 
       const result = await response.json();
@@ -162,7 +163,8 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
       setShowDetails(true);
     } catch (err) {
       console.error('Enhance AI failed:', err);
-      setError('Failed to enhance your idea with AI. Please try again.');
+      const message = err instanceof Error ? err.message : '';
+      setError(message.includes('Daily beta AI helper limit reached') ? t('submit.aiLimitReached') : 'Failed to enhance your idea with AI. Please try again.');
     } finally {
       setIsEnhancing(false);
     }
@@ -266,17 +268,15 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
       };
 
       const submitViaServerFallback = async () => {
-        const token = await currentUser.getIdToken(true);
         const { createdAt, updatedAt, ...payload } = docData;
         const controller = new AbortController();
         const fallbackTimer = setTimeout(() => controller.abort(), 10000);
         let response: Response;
         try {
-          response = await fetch('/api/ideas', {
+          response = await authenticatedFetch('/api/ideas', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
             },
             body: JSON.stringify({
               ideaId: ideaRef.id,
@@ -306,7 +306,7 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
       try {
         await setDocWithTimeout();
       } catch (writeErr: any) {
-        if (isRetryableSubmitError(writeErr?.code)) {
+        if (shouldUseServerSubmitFallback(writeErr?.code)) {
           await submitViaServerFallback();
         } else {
           throw writeErr;
@@ -327,7 +327,7 @@ export default function SubmitIdea({ navigate }: SubmitIdeaProps) {
           ? '投稿権限エラーです。ログイン状態・メール認証・入力文字数（タイトル100文字/サマリー200文字）を確認してください。'
           : 'Permission denied. Check sign-in status, email verification, and title/summary length limits.'
         );
-      } else if (isRetryableSubmitError(err?.code)) {
+      } else if (shouldUseServerSubmitFallback(err?.code)) {
         setError(language === 'ja'
           ? '投稿処理がタイムアウトしました。接続状態を確認し、少し待ってから再試行してください。'
           : 'Submission timed out. Please check your connection and try again.'

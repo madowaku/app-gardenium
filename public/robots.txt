@@ -1,0 +1,20 @@
+User-agent: *
+Allow: /
+Disallow: /en/login
+Disallow: /ja/login
+Disallow: /en/mypage
+Disallow: /ja/mypage
+Disallow: /en/membership
+Disallow: /ja/membership
+Disallow: /en/ideas/new
+Disallow: /ja/ideas/new
+Disallow: /en/tester-calls/new
+Disallow: /ja/tester-calls/new
+Disallow: /en/admin/
+Disallow: /ja/admin/
+Disallow: /en/billing/
+Disallow: /ja/billing/
+Disallow: /en/commerce
+Disallow: /ja/commerce
+
+Sitemap: https://app-gardenium.com/sitemap.xml

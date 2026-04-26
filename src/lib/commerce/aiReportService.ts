@@ -17,7 +17,7 @@ import { authenticatedFetch } from '../authenticatedFetch';
 /**
  * Generates an AI analysis report based on comments of a post.
  */
-export async function generateAiReport(userId: string, postId: string, isPremium: boolean = false): Promise<string> {
+export async function generateAiReport(userId: string, postId: string, isPremium: boolean = false, language: 'en' | 'ja' = 'ja'): Promise<string> {
   try {
     // Fetch Idea Data
     const ideaSnapshot = await getDoc(doc(db, 'ideas', postId));
@@ -39,6 +39,7 @@ export async function generateAiReport(userId: string, postId: string, isPremium
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         isPremium,
+        language,
         activityData: {
           ideaTitle,
           ideaSummary,
@@ -56,7 +57,8 @@ export async function generateAiReport(userId: string, postId: string, isPremium
     const reportData = {
       postId,
       userId,
-      summary: parsedData.summary || "分析できる十分なデータがありませんでした。",
+      language,
+      summary: parsedData.summary || (language === 'ja' ? "分析できる十分なデータがありませんでした。" : "There was not enough data to analyze yet."),
       commonRequests: parsedData.commonRequests || [],
       concerns: parsedData.concerns || [],
       nextActions: parsedData.nextActions || [],
@@ -69,7 +71,9 @@ export async function generateAiReport(userId: string, postId: string, isPremium
     await addDoc(collection(db, 'notifications'), {
       userId,
       type: 'ai_report',
-      message: `AI分析レポートの準備ができました！ (${ideaTitle})`,
+      message: language === 'ja'
+        ? `AI分析レポートの準備ができました！ (${ideaTitle})`
+        : `Your AI analysis report is ready. (${ideaTitle})`,
       link: `/ideas/${postId}`,
       read: false,
       createdAt: serverTimestamp()
@@ -83,9 +87,12 @@ export async function generateAiReport(userId: string, postId: string, isPremium
     const fallbackData = {
       postId,
       userId,
-      summary: "AIレポートの生成に失敗しました。しばらく経ってから再度お試しください。",
+      language,
+      summary: language === 'ja'
+        ? "AIレポートの生成に失敗しました。しばらく経ってから再度お試しください。"
+        : "AI report generation failed. Please try again later.",
       commonRequests: [],
-      concerns: ["エラーが発生しました"],
+      concerns: [language === 'ja' ? "エラーが発生しました" : "An error occurred"],
       nextActions: [],
       createdAt: serverTimestamp()
     };

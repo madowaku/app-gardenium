@@ -57,7 +57,7 @@ export async function processMockPayment(purchaseId: string): Promise<boolean> {
 /**
  * Fulfills the purchase by granting tickets or generating reports.
  */
-export async function fulfillPurchase(purchaseId: string): Promise<void> {
+export async function fulfillPurchase(purchaseId: string, language: 'en' | 'ja' = 'ja'): Promise<void> {
   const purchaseRef = doc(db, 'purchases', purchaseId);
   const purchaseSnap = await getDoc(purchaseRef);
   
@@ -74,7 +74,7 @@ export async function fulfillPurchase(purchaseId: string): Promise<void> {
     });
   } else if (data.productType === 'ai_report' && data.targetPostId) {
     // Generate AI Report
-    await generateAiReport(data.userId, data.targetPostId);
+    await generateAiReport(data.userId, data.targetPostId, false, language);
   }
 
   // Mark as fulfilled
