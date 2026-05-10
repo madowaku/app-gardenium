@@ -25,6 +25,7 @@ import { motion } from 'motion/react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { APP_PLANS, PlanDefinition } from '../lib/billing/plans';
+import { getTopUpDisplayPrice } from '../lib/commerce/pricingConfig';
 import { billingService } from '../services/billingService';
 import PurchaseConfirmModal from './commerce/PurchaseConfirmModal';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -506,15 +507,15 @@ const PricingPage: React.FC = () => {
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">単発での利用も可能です / Top-up Menu</div>
               <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
                 <span className="text-sm font-bold text-slate-700">{t('pricing.oneTimeBoost')}</span>
-                <span className="text-emerald-600 font-bold">¥100</span>
+                <span className="text-emerald-600 font-bold">{getTopUpDisplayPrice('boost_support', language)}</span>
               </div>
               <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
                 <span className="text-sm font-bold text-slate-700">{t('pricing.oneTimeReport')}</span>
-                <span className="text-emerald-600 font-bold">¥300</span>
+                <span className="text-emerald-600 font-bold">{getTopUpDisplayPrice('extra_activity_report', language)}</span>
               </div>
               <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
                 <span className="text-sm font-bold text-slate-700">{t('pricing.oneTimeTesters')}</span>
-                <span className="text-emerald-600 font-bold">¥300</span>
+                <span className="text-emerald-600 font-bold">{getTopUpDisplayPrice('extra_tester_recruitment', language)}</span>
               </div>
             </div>
           </div>

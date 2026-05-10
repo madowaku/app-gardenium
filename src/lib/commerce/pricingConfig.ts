@@ -8,17 +8,17 @@ interface PricingInfo {
 
 export const TOP_UP_CONFIG: Record<string, PricingInfo> = {
   boost_support: {
-    price: 100,
+    price: 300,
     currency: 'JPY',
     priceId: 'STRIPE_BOOST_SUPPORT_PRICE_ID' // Note: This refers to the environment variable key on the backend
   },
   extra_activity_report: {
-    price: 300,
+    price: 500,
     currency: 'JPY',
     priceId: 'STRIPE_EXTRA_ACTIVITY_REPORT_PRICE_ID'
   },
   extra_tester_recruitment: {
-    price: 300,
+    price: 500,
     currency: 'JPY',
     priceId: 'STRIPE_EXTRA_TESTER_RECRUITMENT_PRICE_ID'
   }

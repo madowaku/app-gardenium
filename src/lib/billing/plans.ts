@@ -23,13 +23,13 @@ export const APP_PLANS: Record<string, PlanDefinition> = {
     priceLabel: '¥300',
     priceAmount: 300,
     billingCycle: 'monthly',
-    description: 'A seat to keep going. Read development logs and watch the greenhouse grow.',
+    description: 'A seat for steady nurturing. Keep posting, run the Growth Agent, and shape early tester outreach.',
     stripePriceId: 'price_supporter_monthly_placeholder', // REPLACE with real Stripe Price ID
     features: [
-      'Read greenhouse WIP posts',
-      'Support with cheers and comments',
-      'Community dev map access',
-      'Gentle supporting role'
+      'Post more ideas and dev logs',
+      'Growth Agent up to 10 times / month',
+      'Tester Strategy and Share Boost drafts',
+      'Greenhouse access and Supporter badge'
     ],
     checkoutMode: 'subscription',
     isActive: true,
@@ -39,17 +39,16 @@ export const APP_PLANS: Record<string, PlanDefinition> = {
     id: 'pro_monthly',
     plan: 'pro',
     displayName: 'Pro',
-    priceLabel: '¥500',
-    priceAmount: 500,
+    priceLabel: '¥980',
+    priceAmount: 980,
     billingCycle: 'monthly',
-    description: 'A seat to move forward. Post your progress, get feedback, and boost your seeds.',
+    description: 'A seat for launch preparation. Organize next steps, review store risks, and get share-ready copy.',
     stripePriceId: 'price_pro_monthly_placeholder', // REPLACE with real Stripe Price ID
     features: [
-      'Post items in greenhouse',
-      'Apply for spotlight boosts',
-      'AI seedling analysis',
-      'Priority tester calls',
-      'Direct builder feedback'
+      'Growth Agent up to 50 times / month',
+      'Store Review Readiness',
+      'Share Boost variants and SEO / OGP copy',
+      'Tester recruitment boost and one monthly priority boost'
     ],
     checkoutMode: 'subscription',
     isActive: true,
