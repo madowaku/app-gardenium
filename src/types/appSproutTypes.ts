@@ -142,6 +142,20 @@ export interface Idea extends BaseEntity {
   releaseStatus: 'none' | 'planned' | 'beta' | 'released';
   latestReleaseId?: string | null;
   releasedAt?: number | null;
+  seoDescription?: string;
+  latestAgentRunId?: string;
+  latestGrowthSummary?: string;
+  nextActions?: string[];
+  mvpScope?: string[];
+  riskNotes?: string[];
+  agentUpdatedAt?: number | unknown;
+  testerCall?: {
+    prototypeStage?: string;
+    idealTester?: string;
+    testingGoal?: string;
+    actionLink?: string;
+    feedbackQuestions?: string[];
+  };
   
   visibility?: 'public' | 'unlisted' | 'private';
 }

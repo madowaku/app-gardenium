@@ -13,6 +13,7 @@ import PurchaseConfirmModal from '../components/commerce/PurchaseConfirmModal';
 import { AiReportCard } from '../components/commerce/AiReportCard';
 import { authenticatedFetch } from '../lib/authenticatedFetch';
 import Seo from '../components/Seo';
+import GrowthAgentPanel from '../components/agents/GrowthAgentPanel';
 
 interface Comment {
   id: string;
@@ -766,6 +767,13 @@ export default function IdeaDetail({ navigate, ideaId }: IdeaDetailProps) {
                       </section>
                     </div>
                   )}
+
+                  <GrowthAgentPanel
+                    ideaId={idea.id}
+                    ownerUserId={idea.authorId}
+                    currentUserId={currentUser?.uid}
+                    language={language}
+                  />
 
                   {/* Growth Log Section - Always visible at bottom of overview or if Released */}
                   <section className="pt-12 border-t border-border-color/60">

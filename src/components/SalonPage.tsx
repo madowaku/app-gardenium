@@ -24,6 +24,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { localizePath } from '../lib/i18nRoutes';
+import { db } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 // types
 import { Plan, PostRecord, SalonPost } from '../types/appSproutTypes';
@@ -42,6 +44,10 @@ const SalonPage: React.FC = () => {
   const [posts, setPosts] = useState<PostRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [recentlyPublishedId, setRecentlyPublishedId] = useState<string | null>(null);
+
+  // Theme config state
+  const [themeConfig, setThemeConfig] = useState<any>(null);
+  const [themeLoading, setThemeLoading] = useState(true);
   
   const userPlan = appUser?.plan || 'free';
   const isLoggedIn = !!currentUser;
@@ -78,6 +84,24 @@ const SalonPage: React.FC = () => {
 
     return () => unsubscribe();
   }, [currentUser?.uid, isLoggedIn]);
+
+  // Fetch Theme Config
+  useEffect(() => {
+    const fetchTheme = async () => {
+      try {
+        const docRef = doc(db, 'appConfig', 'greenhouse');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setThemeConfig(docSnap.data());
+        }
+      } catch (err) {
+        console.error('Failed to fetch greenhouse config:', err);
+      } finally {
+        setThemeLoading(false);
+      }
+    };
+    fetchTheme();
+  }, []);
 
   // Composer state
   const [postMode, setPostMode] = useState<'progress' | 'question'>('progress');
@@ -367,7 +391,7 @@ const SalonPage: React.FC = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.2 }}
-              className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-[32px] border border-amber-100/50 shadow-sm relative overflow-hidden"
+              className="bg-gradient-to-br from-amber-50 to-orange-50 p-6 rounded-[32px] border border-amber-100/50 shadow-sm relative overflow-hidden min-h-[160px]"
             >
               <div className="absolute -top-4 -right-4 text-amber-200/50 rotate-12 pointer-events-none">
                 <Sun size={100} />
@@ -377,10 +401,24 @@ const SalonPage: React.FC = () => {
                   <Lightbulb size={20} className="text-amber-500" />
                   <h3 className="font-bold text-amber-900">{t('salon.themeTitle')}</h3>
                 </div>
-                <p className="text-xs text-amber-700/80 mb-2 font-medium">{t('salon.themeDesc')}</p>
-                <div className="bg-white/60 backdrop-blur rounded-2xl p-4 font-bold text-amber-900 shadow-sm border border-white/50 text-sm">
-                  {t('salon.themeTopic')}
-                </div>
+                {themeLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 size={24} className="animate-spin text-amber-400" />
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-amber-700/80 mb-2 font-medium">
+                      {(themeConfig?.weeklyThemeActive && themeConfig?.[`weeklyThemePrompt${language === 'en' ? 'En' : 'Ja'}`]) 
+                        ? themeConfig[`weeklyThemePrompt${language === 'en' ? 'En' : 'Ja'}`] 
+                        : t('salon.themeDesc')}
+                    </p>
+                    <div className="bg-white/60 backdrop-blur rounded-2xl p-4 font-bold text-amber-900 shadow-sm border border-white/50 text-sm whitespace-pre-wrap">
+                      {(themeConfig?.weeklyThemeActive && themeConfig?.[`weeklyThemeTitle${language === 'en' ? 'En' : 'Ja'}`]) 
+                        ? themeConfig[`weeklyThemeTitle${language === 'en' ? 'En' : 'Ja'}`] 
+                        : t('salon.themeTopic')}
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
 

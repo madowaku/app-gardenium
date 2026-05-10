@@ -30,6 +30,8 @@ import {
   consumeTopUp,
 } from "./src/lib/server/usageService";
 import { getAIModelForTask, getAIService } from "./src/lib/ai/modelRouting";
+import { listAgentSuggestions, runGrowthReview } from "./src/lib/server/growthAgentService";
+import { applySuggestion, dismissSuggestion } from "./src/lib/server/agentSuggestionService";
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -364,6 +366,7 @@ async function startServer() {
 
   const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, message: "AI rate limit exceeded." });
   app.use('/api/ai/', aiLimiter);
+  app.use('/api/agents/', aiLimiter);
 
   // 1. Stripe Webhook (MUST BE BEFORE bodyParser.json())
   app.post(
@@ -732,6 +735,81 @@ async function startServer() {
       } catch (error: any) {
         console.error("AI report analysis error:", error);
         return res.status(500).json({ error: error.message || "Failed to generate report" });
+      }
+    }
+  );
+
+  app.get(
+    "/api/agents/ideas/:ideaId/suggestions",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const suggestions = await listAgentSuggestions({
+          ideaId: req.params.ideaId,
+          userId: req.uid!,
+        });
+        return res.json({ suggestions });
+      } catch (error: any) {
+        const status = /not found/i.test(error?.message) ? 404 : /owner|cannot|another/i.test(error?.message) ? 403 : 500;
+        return res.status(status).json({ error: error.message || "Failed to load suggestions" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/agents/growth-review",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { ideaId, language } = req.body || {};
+        if (!ideaId || typeof ideaId !== "string") {
+          return res.status(400).json({ error: "ideaId is required" });
+        }
+        const result = await runGrowthReview({
+          ideaId,
+          userId: req.uid!,
+          language: language === "en" ? "en" : "ja",
+        });
+        return res.json(result);
+      } catch (error: any) {
+        const status = /not found/i.test(error?.message) ? 404 : /owner|cannot|another/i.test(error?.message) ? 403 : 500;
+        return res.status(status).json({ error: error.message || "Failed to run Growth Agent" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/agents/apply-suggestion",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { suggestionId } = req.body || {};
+        if (!suggestionId || typeof suggestionId !== "string") {
+          return res.status(400).json({ error: "suggestionId is required" });
+        }
+        const suggestion = await applySuggestion({ suggestionId, userId: req.uid! });
+        return res.json({ suggestion });
+      } catch (error: any) {
+        const status = /not found/i.test(error?.message) ? 404 : /owner|cannot|another/i.test(error?.message) ? 403 : 400;
+        return res.status(status).json({ error: error.message || "Failed to apply suggestion" });
+      }
+    }
+  );
+
+  app.post(
+    "/api/agents/dismiss-suggestion",
+    authenticate,
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const { suggestionId } = req.body || {};
+        if (!suggestionId || typeof suggestionId !== "string") {
+          return res.status(400).json({ error: "suggestionId is required" });
+        }
+        const suggestion = await dismissSuggestion({ suggestionId, userId: req.uid! });
+        return res.json({ suggestion });
+      } catch (error: any) {
+        const status = /not found/i.test(error?.message) ? 404 : /owner|cannot|another/i.test(error?.message) ? 403 : 400;
+        return res.status(status).json({ error: error.message || "Failed to dismiss suggestion" });
       }
     }
   );

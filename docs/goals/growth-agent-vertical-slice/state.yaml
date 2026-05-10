@@ -1,0 +1,156 @@
+version: 2
+
+goal:
+  title: "App Gardenium Growth Agent Vertical Slice"
+  slug: "growth-agent-vertical-slice"
+  kind: specific
+  tranche: "Implement typed growth-review suggestions, persistence, apply/dismiss API, and an Idea detail UI panel with verification."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    reasoning_hint: default
+    objective: "Map backend and frontend integration points for the Growth Agent vertical slice."
+    inputs:
+      - "docs/google_ai_agents_challenge_growth_agent_implementation.md"
+      - "server.ts"
+      - "src/pages/IdeaDetail.tsx"
+      - "src/lib/server"
+      - "src/types/appSproutTypes.ts"
+    constraints:
+      - "Read-only."
+      - "Prefer concrete file-path evidence."
+    expected_output:
+      - "Integration points"
+      - "Verification commands"
+      - "Allowed implementation files"
+    receipt:
+      result: done
+      summary: "Initial PM/Scout map found a monolithic Express server, existing Firebase auth/admin helpers, @google/genai dependency, authenticatedFetch helper, and IdeaDetail mount point."
+      evidence:
+        - "server.ts"
+        - "src/lib/server/auth.ts"
+        - "src/lib/server/admin.ts"
+        - "src/lib/ai/modelRouting.ts"
+        - "src/pages/IdeaDetail.tsx"
+        - "package.json"
+  - id: T002
+    type: worker
+    assignee: Worker
+    status: done
+    reasoning_hint: default
+    objective: "Implement the Growth Agent vertical slice with tests and verification."
+    allowed_files:
+      - "package.json"
+      - "src/types/agents.ts"
+      - "src/lib/agents/growthAgent.ts"
+      - "src/lib/server/geminiClient.ts"
+      - "src/lib/server/growthAgentService.ts"
+      - "src/lib/server/agentSuggestionService.ts"
+      - "src/components/agents/AgentSuggestionCard.tsx"
+      - "src/components/agents/GrowthAgentPanel.tsx"
+      - "src/pages/IdeaDetail.tsx"
+      - "src/types/appSproutTypes.ts"
+      - "server.ts"
+      - "tests/agents.test.ts"
+      - ".env.example"
+    verify:
+      - "npm test"
+      - "npm run lint"
+      - "npm run build"
+    stop_if:
+      - "Need credentials or live Firebase/Gemini access for local verification."
+      - "Need files outside allowed_files."
+      - "Verification fails twice for unrelated existing reasons."
+    receipt:
+      result: done
+      changed_files:
+        - "package.json"
+        - ".env.example"
+        - "server.ts"
+        - "src/types/agents.ts"
+        - "src/types/appSproutTypes.ts"
+        - "src/lib/agents/growthAgent.ts"
+        - "src/lib/server/geminiClient.ts"
+        - "src/lib/server/growthAgentService.ts"
+        - "src/lib/server/agentSuggestionService.ts"
+        - "src/components/agents/AgentSuggestionCard.tsx"
+        - "src/components/agents/GrowthAgentPanel.tsx"
+        - "src/pages/IdeaDetail.tsx"
+        - "tests/agents.test.ts"
+      commands:
+        - cmd: "npm test"
+          status: pass
+        - cmd: "npm run lint"
+          status: pass
+        - cmd: "npm run build"
+          status: pass
+        - cmd: "Invoke-WebRequest -UseBasicParsing http://localhost:3000/ja -TimeoutSec 10"
+          status: pass
+      summary: "Implemented a demo-ready owner-only Growth Agent vertical slice with typed suggestions, mockable Gemini structured output, agentRuns/agentSuggestions persistence, apply/dismiss routes, and Idea detail UI cards."
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    reasoning_hint: default
+    objective: "Audit whether the implemented slice satisfies the demo-ready Growth Agent tranche."
+    inputs:
+      - "T001 receipt"
+      - "T002 receipt"
+      - "Last verification"
+      - "Current diff"
+    constraints:
+      - "Do not implement."
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: done
+      decision: complete
+      summary: "The current tranche is complete: Growth Agent can generate stored draft suggestions, render them on owner Idea detail pages, and apply/dismiss them through authenticated backend routes."
+      evidence:
+        - "src/types/agents.ts defines AgentRun, AgentSuggestion, and GrowthReviewOutput."
+        - "src/lib/server/growthAgentService.ts creates agentRuns and agentSuggestions, with AGENT_MOCK_MODE fallback."
+        - "server.ts exposes authenticated suggestions, growth-review, apply, and dismiss routes."
+        - "src/components/agents/GrowthAgentPanel.tsx and AgentSuggestionCard.tsx provide generate/apply/dismiss/copy UI."
+        - "src/pages/IdeaDetail.tsx mounts the owner-only Growth Agent panel."
+        - "tests/agents.test.ts covers output conversion and apply patch behavior."
+      verification:
+        - "npm test: pass"
+        - "npm run lint: pass"
+        - "npm run build: pass"
+        - "http://localhost:3000/ja: 200 OK"
+      dirty_scope_note:
+        - "firestore.rules and src/components/SalonPage.tsx had pre-existing unrelated dirty changes and were not modified for this tranche."
+        - "docs/google_ai_agents_challenge_growth_agent_implementation.md and marketing/ were pre-existing untracked user files and are not part of the implementation receipt."
+
+checks:
+  dirty_fingerprint: unknown
+  last_verification:
+    result: pass
+    task: T002
+    commands:
+      - "npm test"
+      - "npm run lint"
+      - "npm run build"
+      - "Invoke-WebRequest -UseBasicParsing http://localhost:3000/ja -TimeoutSec 10"

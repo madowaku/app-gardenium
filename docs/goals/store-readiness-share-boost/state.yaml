@@ -1,0 +1,138 @@
+version: 2
+
+goal:
+  title: "Store Readiness and Share Boost Demo Slice"
+  slug: "store-readiness-share-boost"
+  kind: specific
+  tranche: "Add Store Review Readiness and Share Boost suggestions to the Growth Agent demo flow with verification."
+  status: done
+
+rules:
+  pm_owns_state: true
+  one_active_task: true
+  max_write_workers: 1
+  no_implementation_without_worker_or_pm_task: true
+  no_completion_without_judge_or_pm_audit: true
+  planning_is_not_completion: true
+  queued_required_worker_blocks_completion: true
+
+agents:
+  scout: installed
+  worker: installed
+  judge: installed
+
+active_task: null
+
+tasks:
+  - id: T001
+    type: scout
+    assignee: Scout
+    status: done
+    objective: "Map implementation surface and policy-safe wording for Store Readiness and Share Boost."
+    constraints:
+      - "Read-only."
+      - "Prefer official policy sources for factual claims."
+    expected_output:
+      - "Files to edit"
+      - "Risk categories"
+      - "UI mount strategy"
+    receipt:
+      result: done
+      summary: "Found existing typed suggestion pipeline, owner-only GrowthAgentPanel, apply/dismiss routes, and tests. Official web research found Apple App Review and Google Play policy sources for review-completeness, UGC, AI, and metadata claims."
+      evidence:
+        - "src/types/agents.ts"
+        - "src/lib/agents/growthAgent.ts"
+        - "src/lib/server/growthAgentService.ts"
+        - "src/components/agents/GrowthAgentPanel.tsx"
+        - "src/components/agents/AgentSuggestionCard.tsx"
+        - "src/pages/IdeaDetail.tsx"
+        - "tests/agents.test.ts"
+        - "https://developer.apple.com/appstore/resources/approval/guidelines.html"
+        - "https://developer.apple.com/app-store/review/"
+        - "https://support.google.com/googleplay/android-developer/answer/15402170"
+        - "https://support.google.com/googleplay/android-developer/answer/16313518"
+  - id: T002
+    type: worker
+    assignee: Worker
+    status: done
+    objective: "Implement mock-ready Store Review Readiness and Share Boost in Growth Agent."
+    allowed_files:
+      - "src/types/agents.ts"
+      - "src/lib/agents/growthAgent.ts"
+      - "src/lib/server/growthAgentService.ts"
+      - "src/lib/server/agentSuggestionService.ts"
+      - "src/components/agents/AgentSuggestionCard.tsx"
+      - "src/components/agents/GrowthAgentPanel.tsx"
+      - "tests/agents.test.ts"
+      - "README_app-gardenium.md"
+      - "docs/google-ai-agents-challenge-demo-script.md"
+      - "docs/goals/store-readiness-share-boost/goal.md"
+      - "docs/goals/store-readiness-share-boost/state.yaml"
+    verify:
+      - "npm test"
+      - "npm run lint"
+      - "npm run build"
+      - "git diff --check on tranche files"
+    stop_if:
+      - "Need live store/legal determination."
+      - "Need files outside allowed_files."
+      - "Verification fails twice for unrelated existing reasons."
+    receipt:
+      result: done
+      changed_files:
+        - "src/types/agents.ts"
+        - "src/lib/agents/growthAgent.ts"
+        - "src/lib/server/growthAgentService.ts"
+        - "src/components/agents/AgentSuggestionCard.tsx"
+        - "src/components/agents/GrowthAgentPanel.tsx"
+        - "tests/agents.test.ts"
+        - "README_app-gardenium.md"
+        - "docs/google-ai-agents-challenge-demo-script.md"
+        - "docs/goals/store-readiness-share-boost/goal.md"
+        - "docs/goals/store-readiness-share-boost/state.yaml"
+      commands:
+        - cmd: "npm test"
+          status: pass
+        - cmd: "npm run lint"
+          status: pass
+        - cmd: "npm run build"
+          status: pass
+        - cmd: "git diff --check on tranche files"
+          status: pass
+      summary: "Growth Review now emits Store Review Readiness and Share Boost draft suggestion cards in mock mode, with typed conversion tests, UI rendering, disclaimer copy, and demo docs."
+      notes:
+        - "Full git diff --check is blocked by pre-existing unrelated trailing whitespace in src/components/SalonPage.tsx."
+        - "Ollama models qwen3.5 and gemma4 are installed, but generation timed out locally; implementation used Scout findings and official Apple/Google web sources."
+  - id: T999
+    type: judge
+    assignee: Judge
+    status: done
+    objective: "Audit whether the demo slice is complete and policy-safe."
+    constraints:
+      - "Do not implement."
+      - "Reject any wording that guarantees review approval."
+    expected_output:
+      - "complete | not_complete"
+      - "missing evidence"
+      - "next task if not complete"
+    receipt:
+      result: done
+      decision: complete
+      summary: "The tranche is complete and policy-safe for demo: no approval guarantee is made, and both new cards are draft suggestions in the existing human-in-the-loop flow."
+      evidence:
+        - "tests/agents.test.ts covers Store Review Readiness and Share Boost conversion."
+        - "src/lib/server/growthAgentService.ts appends both suggestions to Growth Review output."
+        - "src/components/agents/AgentSuggestionCard.tsx renders both new suggestion types."
+        - "src/components/agents/GrowthAgentPanel.tsx includes an approval-guarantee disclaimer."
+        - "README_app-gardenium.md and demo script describe the expanded flow."
+
+checks:
+  dirty_fingerprint: unknown
+  last_verification:
+    result: pass
+    task: T002
+    commands:
+      - "npm test"
+      - "npm run lint"
+      - "npm run build"
+      - "git diff --check on tranche files"

@@ -27,7 +27,44 @@ The project currently supports:
 - Stripe billing integration
 - membership / usage endpoints
 - AI summary endpoint
+- Growth Agent demo workflow for idea diagnosis, MVP planning, tester strategy, and human-approved suggestion apply
 - front-end pages for ideas, profiles, membership, commerce, salon, and legal pages
+
+## App Gardenium Growth Agent
+
+Growth Agent helps solo builders turn rough app ideas into tested, launchable products.
+
+It analyzes each idea, creates an MVP plan, suggests a tester strategy, checks store-review readiness, drafts social sharing copy, and recommends the next concrete actions.
+
+The agent is human-in-the-loop: suggestions are saved as drafts in `agentSuggestions`, and users decide what to apply. Each run is recorded in `agentRuns` for traceability.
+
+The demo flow is:
+
+```text
+Idea -> MVP Plan -> Tester Strategy -> Store Review Readiness -> Share Boost
+```
+
+Store Review Readiness highlights likely App Store / Google Play preparation risks such as privacy policy gaps, review notes, AI disclosure, metadata clarity, and demo access. It does not guarantee store approval.
+
+Share Boost turns the project plan into social copy for tester calls, feedback requests, progress updates, or launch announcements.
+
+For local demo mode:
+
+```bash
+AGENT_MOCK_MODE=true npm run dev
+```
+
+Live Gemini mode can be used by setting `GEMINI_API_KEY` and leaving `AGENT_MOCK_MODE` unset or false.
+
+Model routing is configurable through environment variables:
+
+```env
+GROWTH_AGENT_MODEL=gemini-2.5-flash-lite
+GROWTH_AGENT_STRONG_MODEL=gemini-3-flash-preview
+GROWTH_AGENT_COPY_MODEL=gemini-3-flash-preview
+```
+
+The Growth Agent can run with Flash-Lite for fast, low-latency structured suggestions, while copy-heavy or final polish tasks can use a stronger Flash model. If Google AI Studio or Vertex AI shows newer official model IDs, update these environment variables without changing application code.
 
 ## Local Development
 
@@ -217,6 +254,15 @@ Recommended workflow:
 - Never expose Stripe secret keys in client code
 - Never expose Firebase Admin credentials in client code
 - Review Firestore rules carefully before production release
+
+## Working Tree Notes
+
+Known unrelated dirty files observed during the Growth Agent implementation:
+
+- `firestore.rules`
+- `src/components/SalonPage.tsx`
+
+These were pre-existing changes and were not modified as part of the Growth Agent vertical slice.
 
 ## Origin
 
