@@ -1,6 +1,6 @@
 import { initializeApp, getApps, applicationDefault, App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { Firestore } from "@google-cloud/firestore";
 import fs from "fs";
 import path from "path";
 
@@ -16,22 +16,42 @@ export function loadFirebaseConfig(): FirebaseAppletConfig {
 }
 
 const config = loadFirebaseConfig();
-let defaultApp: App;
 
-if (getApps().length === 0) {
-  defaultApp = initializeApp({
+function initializeAdminApp(): App {
+  if (getApps().length) {
+    return getApps()[0];
+  }
+
+  const app = initializeApp({
     projectId: config.projectId,
     credential: applicationDefault(),
   });
+
   console.log(`Firebase Admin initialized for project: ${config.projectId}`);
-} else {
-  defaultApp = getApps()[0];
+  return app;
 }
 
-export const adminAuth = getAuth(defaultApp);
+function initializeAdminDb(): Firestore {
+  const databaseId =
+    config.firestoreDatabaseId && config.firestoreDatabaseId !== "(default)"
+      ? config.firestoreDatabaseId
+      : "(default)";
 
-// Use the specific Firestore database ID from config if present
-const databaseId = config.firestoreDatabaseId;
-export const adminDb = databaseId && databaseId !== "(default)"
-  ? getFirestore(defaultApp, databaseId)
-  : getFirestore(defaultApp);
+  try {
+    return new Firestore({
+      projectId: config.projectId,
+      databaseId,
+    });
+  } catch (error) {
+    console.error("Firebase Admin Firestore initialization error", {
+      projectId: config.projectId,
+      databaseId,
+      error,
+    });
+    throw error;
+  }
+}
+
+export const adminApp = initializeAdminApp();
+export const adminAuth = getAuth(adminApp);
+export const adminDb = initializeAdminDb();

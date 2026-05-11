@@ -324,7 +324,10 @@ async function renderIndexWithSeo(indexPath: string, requestPath: string, siteUr
 }
 
 async function startServer() {
-  app.set("trust proxy", true);
+  // Cloud Run terminates traffic behind a single trusted proxy hop.
+  // Avoid `true` here because express-rate-limit treats it as overly permissive
+  // for IP-based limiting and will raise ERR_ERL_PERMISSIVE_TRUST_PROXY.
+  app.set("trust proxy", 1);
 
   // 1. Security Headers (Helmet)
   app.use(helmet({

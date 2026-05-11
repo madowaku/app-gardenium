@@ -39,8 +39,8 @@ export const APP_PLANS: Record<string, PlanDefinition> = {
     id: 'pro_monthly',
     plan: 'pro',
     displayName: 'Pro',
-    priceLabel: '¥980',
-    priceAmount: 980,
+    priceLabel: '¥500',
+    priceAmount: 500,
     billingCycle: 'monthly',
     description: 'A seat for launch preparation. Organize next steps, review store risks, and get share-ready copy.',
     stripePriceId: 'price_pro_monthly_placeholder', // REPLACE with real Stripe Price ID
